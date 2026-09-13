@@ -226,13 +226,22 @@ def subsystem_1():
     us2Value = board.sonar_read(trigPinUs2)
 
     if check_overheight(us1Value, limit, GROUND) == True:
-        print_alert(us1Value, GROUND)
+        if tl1Controller["state"] == 0:
+            print_alert(us1Value, GROUND)
         start_sequence(tl1Controller, lambda: tl_r_off_y_on_g_off(diodeStateDict["diodes"], TL1R, TL1Y, TL1G))
+
     update_traffic(tl1Controller, lambda: tl_r_on_y_off_g_off(diodeStateDict["diodes"], TL1R, TL1Y, TL1G), lambda: tl_r_off_y_off_g_on(diodeStateDict["diodes"], TL1R, TL1Y, TL1G))
 
     if check_overheight(us2Value, limit, GROUND) == True:
         start_sequence(tl2Controller, lambda: tl_r_off_y_on_g_off(diodeStateDict["diodes"], TL2R, TL2Y, TL2G))
     update_traffic(tl2Controller, lambda: tl_r_on_y_off_g_off(diodeStateDict["diodes"], TL2R, TL2Y, TL2G), lambda: tl_r_off_y_off_g_on(diodeStateDict["diodes"], TL2R, TL2Y, TL2G))
+
+    if tl1Controller["state"] == 0 and tl2Controller["state"] == 1:
+        start_sequence(tl1Controller, lambda: tl_r_off_y_on_g_off(diodeStateDict["diodes"], TL1R, TL1Y, TL1G))
+        update_traffic(tl1Controller, lambda: tl_r_on_y_off_g_off(diodeStateDict["diodes"], TL1R, TL1Y, TL1G), lambda: tl_r_off_y_off_g_on(diodeStateDict["diodes"], TL1R, TL1Y, TL1G))
+        start_sequence(tl2Controller, lambda: tl_r_off_y_on_g_off(diodeStateDict["diodes"], TL2R, TL2Y, TL2G))
+        update_traffic(tl2Controller, lambda: tl_r_on_y_off_g_off(diodeStateDict["diodes"], TL2R, TL2Y, TL2G), lambda: tl_r_off_y_off_g_on(diodeStateDict["diodes"], TL2R, TL2Y, TL2G))
+
 
 
 
