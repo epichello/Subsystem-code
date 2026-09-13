@@ -5,7 +5,7 @@ import random
 
 board = pymata4.Pymata4() #board initialisation
 
-#-------Full-pin-layout-------
+#---------------------Full-pin-layout---------------------
 trigPinUs1 = 2
 echoPinUs1 = 3
 
@@ -33,7 +33,7 @@ ds2 = 18
 
 pa1 = 19
 
-#---Registering the pins----
+#---------------------Registering pins----------------------------
 board.set_pin_mode_digital_output(clockPin)
 board.set_pin_mode_digital_output(latchPin)
 board.set_pin_mode_digital_output(dataPin)
@@ -46,11 +46,10 @@ board.set_pin_mode_sonar(trigPinUs4, echoPinUs4, timeout=200000)
 
 time.sleep(0.5) #config time
 
-#----------------------------
-
-#--shift register bits------
+#---------------------shift register bits---------------------
 allOff = 0
-testDiodes = 0b00011111111111111111111111111111 
+testDiodes = 0b00011111111111111111111111111111 #0b00011111111111111111111111111111
+
 T1R   = 0
 T1Y   = 1
 T1G   = 2
@@ -82,10 +81,32 @@ W2R3  = 27  # middle right
 W2R4  = 28  # right
 
 
-#---------------------------
+#-------------------------------------------------
+
+def update_bit(diodeState, ledNumber, state):
+    '''
+        Changes specified value in binary number 
+        Parameters:
+            diodeState (int): sequence (32-bit) for shift register
+            ledNumber (int): corresponding led position in the diodeState sequence
+            state (boolean): on or off
+        Returns:
+            diodeState (int): sequence (32-bit) for shift register
+    '''
+    if state == 1:
+        return diodeState | (1 << ledNumber)    #RHS creates temp 32-bit number; compares RHS bit with LHS bit using OR operator
+    else:
+        return diodeState & ~(1 << ledNumber)   #RHS creates temp 32-bit number; compares RHS bit with LHS bit using NAND operator
+
 
 def write_to_shift_register(value):
-
+    '''
+    Used to write to shift register activating pins by given value 
+        Parameters:
+            value (int): sequence (8-bit) for shift register 
+        Returns:
+            Does not return anything
+    '''
     board.digital_write(latchPin, 0) #readies shift register to listen (initial state low for all outputs)
     for i in range(31,-1,-1):
         board.digital_write(dataPin, (value >> i) & 1)  #shifts value and ensures only 0s and 1s are pushed through
@@ -94,8 +115,36 @@ def write_to_shift_register(value):
 
     board.digital_write(latchPin, 1) #executes the memory and lights the LEDs
 
+
+
+#----------------------User Input---------------------
+
+limit = 4.0 #Default value
+
+limit = input("Input a height limit or press enter to set default: ")
+
+while True:
+    limit = limit.strip()
+    if(limit == ""):
+        limit = 4.0
+        break
+    try:
+        limit = float(limit)
+        if (limit<=0):
+            limit = input("Enter a valid input or press enter to set default value 1 ")
+            continue
+        break
+    except ValueError:
+        limit = input("Enter a valid input or press enter to set default value: ")
+
+
+print(f"The limit was set to {limit}m")
+
+#------------------------------------------------------------------------
+
 try:
-    while True:
+    while True: 
+        testDiodes = update_bit(testDiodes, T2R, 0)
         write_to_shift_register(testDiodes)
         time.sleep(0.2)
 
