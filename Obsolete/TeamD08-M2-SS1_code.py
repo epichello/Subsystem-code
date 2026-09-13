@@ -13,7 +13,7 @@ lastPollTime = time.time()
 tl1State = "green" #used to track tl current states
 tl2State = "green"
 
-groundDistance = 10
+groundDistance = 15 #15cm = 15m
 
 timerOneSecondTl1 = {
     "timeStart": time.time(),
@@ -87,6 +87,7 @@ def check_overheight(heightTime, limit, ground):
             Parameters:
                 heightTime (float): Values read by the supersonic sensor 
                 limit(integer/float): Used to compare with distanceCm
+                ground(intger/float): Distance between supersonic sensor and ground
             Returns:
                 Returns a boolean dependent on if overheight was detected
     '''
@@ -96,15 +97,16 @@ def check_overheight(heightTime, limit, ground):
     
     return False
 
-def print_alert(heightTime):
+def print_alert(heightTime,ground):
     '''
     Used to check if the height is overheight and print an alert if it is
         Parameters:
             heightTime (float): Values read by the supersonic sensor 
+            ground(intger/float): Distance between supersonic sensor and ground
         Returns:
             Does not return anything
     '''
-    distanceCm = heightTime[0]
+    distanceCm = ground-heightTime[0]
     timeStamp = time.localtime(heightTime[1])
     formattedDate = time.strftime("%d/%m/%Y %H:%M:%S", timeStamp)
     print(f"Overheight was detected! vehicle height: {distanceCm}m at time: {formattedDate}")
@@ -233,7 +235,7 @@ try:
             us2Result = board.sonar_read(trigPin_2)
 
             if(check_overheight(us1Result, limit, groundDistance) == True and timerOneSecondTl1["triggered"] == False and tl1State == "green"): 
-                print_alert(us1Result)  #Checks first supersonic for overheight
+                print_alert(us1Result, groundDistance)  #Checks first supersonic for overheight
                 timerOneSecondTl1["triggered"] = True
                 timerOneSecondTl1["timeStart"] = currentTime
                 tl1State = "yellow"
