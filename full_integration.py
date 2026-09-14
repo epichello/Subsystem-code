@@ -60,6 +60,13 @@ tl2Controller = {
     "durations": {1: 1.0, 2: 10.0}  # stage 1: 1s, stage 2: 10s
 }
 
+tl4tl5CycleController = {
+    "state": 0, 
+    "start_time": 0.0,
+    "durations": {1: 20.0, 2: 3.0, 3: 10.0, 4: 3.0}  # stage 1: 3s, stage 2: 13s
+}
+
+
 #---------------------Registering pins----------------------------
 board.set_pin_mode_digital_output(clockPin)
 board.set_pin_mode_digital_output(latchPin)
@@ -77,7 +84,7 @@ time.sleep(0.5) #config time
 allOff = 0
 
 diodeStateDict = {
-    "diodes": 0b00011111111111111111111111100100
+    "diodes": 0b00011111111111001001111111100100
 }
 
 TL1R   = 0
@@ -147,27 +154,30 @@ def write_to_shift_register(value):
 
     board.digital_write(latchPin, 1) #executes the memory and lights the LEDs
 
-def tl_r_off_y_off_g_on(diodeState, ledNumberRed, ledNumberYellow, ledNumberGreen):
-    diodeState = update_bit(diodeState, ledNumberRed, OFF)
-    diodeState = update_bit(diodeState, ledNumberYellow, OFF)
-    diodeState = update_bit(diodeState, ledNumberGreen, ON)
-    diodeStateDict["diodes"] = diodeState
-    write_to_shift_register(diodeStateDict["diodes"])
+def tl_r_off_y_off_g_on(ledNumberRed, ledNumberYellow, ledNumberGreen):
+    current = diodeStateDict["diodes"]
+    current = update_bit(current, ledNumberRed, OFF)
+    current = update_bit(current, ledNumberYellow, OFF)
+    current = update_bit(current, ledNumberGreen, ON)
+    diodeStateDict["diodes"] = current
+    write_to_shift_register(current)
 
-def tl_r_off_y_on_g_off(diodeState, ledNumberRed, ledNumberYellow, ledNumberGreen):
-    diodeState = update_bit(diodeState, ledNumberRed, OFF)
-    diodeState = update_bit(diodeState, ledNumberYellow, ON)
-    diodeState = update_bit(diodeState, ledNumberGreen, OFF)
-    diodeStateDict["diodes"] = diodeState
-    write_to_shift_register(diodeStateDict["diodes"])
+def tl_r_off_y_on_g_off(ledNumberRed, ledNumberYellow, ledNumberGreen):
+    current = diodeStateDict["diodes"]
+    current = update_bit(current, ledNumberRed, OFF)
+    current = update_bit(current, ledNumberYellow, ON)
+    current = update_bit(current, ledNumberGreen, OFF)
+    diodeStateDict["diodes"] = current
+    write_to_shift_register(current)
 
 
-def tl_r_on_y_off_g_off(diodeState, ledNumberRed, ledNumberYellow, ledNumberGreen):
-    diodeState = update_bit(diodeState, ledNumberRed, ON)
-    diodeState = update_bit(diodeState, ledNumberYellow, OFF)
-    diodeState = update_bit(diodeState, ledNumberGreen, OFF)
-    diodeStateDict["diodes"] = diodeState
-    write_to_shift_register(diodeStateDict["diodes"])
+def tl_r_on_y_off_g_off(ledNumberRed, ledNumberYellow, ledNumberGreen):
+    current = diodeStateDict["diodes"]
+    current = update_bit(current, ledNumberRed, ON)
+    current = update_bit(current, ledNumberYellow, OFF)
+    current = update_bit(current, ledNumberGreen, OFF)
+    diodeStateDict["diodes"] = current
+    write_to_shift_register(current)
 
 def update_traffic(sequence, action_30s, action_default):
 
@@ -185,11 +195,11 @@ def update_traffic(sequence, action_30s, action_default):
             sequence["state"] = 0
             action_default()
 
-def start_sequence(sequence, action_1s):
+def start_sequence(sequence, action):
     if sequence["state"] == 0:  #prevents multiple timers from starting
         sequence["state"] = 1
         sequence["start_time"] = time.time()
-        action_1s()
+        action()
 
 def check_overheight(heightTime, limit, ground):
     '''
@@ -228,21 +238,55 @@ def subsystem_1():
     if check_overheight(us1Value, limit, GROUND) == True:
         if tl1Controller["state"] == 0:
             print_alert(us1Value, GROUND)
-        start_sequence(tl1Controller, lambda: tl_r_off_y_on_g_off(diodeStateDict["diodes"], TL1R, TL1Y, TL1G))
+        start_sequence(tl1Controller, lambda: tl_r_off_y_on_g_off(TL1R, TL1Y, TL1G))
 
-    update_traffic(tl1Controller, lambda: tl_r_on_y_off_g_off(diodeStateDict["diodes"], TL1R, TL1Y, TL1G), lambda: tl_r_off_y_off_g_on(diodeStateDict["diodes"], TL1R, TL1Y, TL1G))
+    update_traffic(tl1Controller, lambda: tl_r_on_y_off_g_off(TL1R, TL1Y, TL1G), lambda: tl_r_off_y_off_g_on(TL1R, TL1Y, TL1G))
 
     if check_overheight(us2Value, limit, GROUND) == True:
-        start_sequence(tl2Controller, lambda: tl_r_off_y_on_g_off(diodeStateDict["diodes"], TL2R, TL2Y, TL2G))
-    update_traffic(tl2Controller, lambda: tl_r_on_y_off_g_off(diodeStateDict["diodes"], TL2R, TL2Y, TL2G), lambda: tl_r_off_y_off_g_on(diodeStateDict["diodes"], TL2R, TL2Y, TL2G))
+        start_sequence(tl2Controller, lambda: tl_r_off_y_on_g_off(TL2R, TL2Y, TL2G))
+    update_traffic(tl2Controller, lambda: tl_r_on_y_off_g_off(TL2R, TL2Y, TL2G), lambda: tl_r_off_y_off_g_on(TL2R, TL2Y, TL2G))
 
     if tl1Controller["state"] == 0 and tl2Controller["state"] == 1:
-        start_sequence(tl1Controller, lambda: tl_r_off_y_on_g_off(diodeStateDict["diodes"], TL1R, TL1Y, TL1G))
-        update_traffic(tl1Controller, lambda: tl_r_on_y_off_g_off(diodeStateDict["diodes"], TL1R, TL1Y, TL1G), lambda: tl_r_off_y_off_g_on(diodeStateDict["diodes"], TL1R, TL1Y, TL1G))
-        start_sequence(tl2Controller, lambda: tl_r_off_y_on_g_off(diodeStateDict["diodes"], TL2R, TL2Y, TL2G))
-        update_traffic(tl2Controller, lambda: tl_r_on_y_off_g_off(diodeStateDict["diodes"], TL2R, TL2Y, TL2G), lambda: tl_r_off_y_off_g_on(diodeStateDict["diodes"], TL2R, TL2Y, TL2G))
+        start_sequence(tl1Controller, lambda: tl_r_off_y_on_g_off(TL1R, TL1Y, TL1G))
+        update_traffic(tl1Controller, lambda: tl_r_on_y_off_g_off(TL1R, TL1Y, TL1G), lambda: tl_r_off_y_off_g_on(TL1R, TL1Y, TL1G))
+        start_sequence(tl2Controller, lambda: tl_r_off_y_on_g_off(TL2R, TL2Y, TL2G))
+        update_traffic(tl2Controller, lambda: tl_r_on_y_off_g_off(TL2R, TL2Y, TL2G), lambda: tl_r_off_y_off_g_on(TL2R, TL2Y, TL2G))
 
+def subsystem_2():
+   currentTime = time.time()
+   if tl4tl5CycleController["state"]==0:
+       tl4tl5CycleController["state"]=1
+       tl4tl5CycleController["start_time"]=currentTime
+       tl_r_off_y_off_g_on(TL4R, TL4Y, TL4G)
+       tl_r_on_y_off_g_off(TL5R, TL5Y, TL5G)
+       return
+    
+   state = tl4tl5CycleController["state"]
+   elapsed = currentTime-tl4tl5CycleController["start_time"]
 
+   if elapsed >= tl4tl5CycleController["durations"][state]:
+       nextState = (state+1)%4 # returns to 0
+       tl4tl5CycleController["state"] = nextState
+       tl4tl5CycleController["start_time"] = currentTime
+
+       if nextState == 1:
+            # TL4 Green, TL5 Red (20s)
+            tl_r_off_y_off_g_on(TL4R, TL4Y, TL4G)
+            tl_r_on_y_off_g_off(TL5R, TL5Y, TL5G)
+       elif nextState == 2:
+            # TL4 Yellow, TL5 Red (3s)
+            tl_r_off_y_on_g_off(TL4R, TL4Y, TL4G)
+            tl_r_on_y_off_g_off(TL5R, TL5Y, TL5G)
+
+       elif nextState == 3:
+            # TL4 Red, TL5 Green (10s)
+            tl_r_on_y_off_g_off(TL4R, TL4Y, TL4G)
+            tl_r_off_y_off_g_on(TL5R, TL5Y, TL5G)
+
+       elif nextState == 4:
+            # TL4 Red, TL5 Yellow (3s)
+            tl_r_on_y_off_g_off(TL4R, TL4Y, TL4G)
+            tl_r_off_y_on_g_off(TL5R, TL5Y, TL5G)
 
 
 #----------------------User Input---------------------
@@ -276,6 +320,7 @@ try:
     while True:
 
         subsystem_1()
+        subsystem_2()
 
         time.sleep(0.2)
 except KeyboardInterrupt:
