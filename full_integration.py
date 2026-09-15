@@ -6,32 +6,32 @@ import random
 board = pymata4.Pymata4() #board initialisation
 
 #---------------------Full-pin-layout---------------------
-trigPinUs1 = 2
-echoPinUs1 = 3
+TRIG_PIN_US_1 = 2
+ECHO_PIN_US_1 = 3
 
-trigPinUs2 = 4
-echoPinUs2 = 5
+TRIG_PIN_US_2 = 4
+ECHO_PIN_US_2 = 5
 
-trigPinUs3 = 6
-echoPinUs3 = 7
+TRIG_PIN_US_3 = 6
+ECHO_PIN_US_3 = 7
 
-trigPinUs4 = 8
-echoPinUs4 = 9
+TRIG_PIN_US_4 = 8
+ECHO_PIN_US_4 = 9
 
-trigPinUs5 = 10
-echoPinUs5 = 11
+TRIG_PIN_US_5 = 10
+ECHO_PIN_US_5 = 11
 
-pb1 = 12
-pb2 = 13
+PB_PIN_1 = 12
+PB_PIN_2 = 13
 
-clockPin = 14 #A0
-latchPin = 15
-dataPin = 16
+CLOCK_PIN = 14 #A0
+LATCH_PIN = 15
+DATA_PIN = 16
 
-ds1 = 17
-ds2 = 18
+DS_PIN_1 = 3    #A3
+DS_PIN_2 = 4    #A4
 
-pa1 = 19
+PA_PIN_1 = 19
 
 #------------------------Initialising variables------------------------
 
@@ -50,33 +50,44 @@ GROUND = 10 #ground is 10cm away from the supersonic sensors
 
 tl1Controller = {
     "state": 0,
-    "start_time": 0.0,
+    "startTime": 0.0,
     "durations": {1: 1.0, 2: 10.0}  # stage 1: 1s, stage 2: 10s
 }
 
 tl2Controller = {
     "state": 0,
-    "start_time": 0.0,
+    "startTime": 0.0,
     "durations": {1: 1.0, 2: 10.0}  # stage 1: 1s, stage 2: 10s
 }
 
 tl4tl5CycleController = {
     "state": 0, 
-    "start_time": 0.0,
+    "startTime": 0.0,
     "durations": {1: 20.0, 2: 3.0, 3: 10.0, 4: 3.0}  # stage 1: 3s, stage 2: 13s
 }
 
+buttonController = {
+    "state": 0,
+    "startTime": 0.0,
+    "durations": {0: 0, 1: 5.0}
+}
 
 #---------------------Registering pins----------------------------
-board.set_pin_mode_digital_output(clockPin)
-board.set_pin_mode_digital_output(latchPin)
-board.set_pin_mode_digital_output(dataPin)
+board.set_pin_mode_digital_output(CLOCK_PIN)    #Shift register
+board.set_pin_mode_digital_output(LATCH_PIN)
+board.set_pin_mode_digital_output(DATA_PIN)
 
-board.set_pin_mode_sonar(trigPinUs1, echoPinUs1, timeout=200000) #timeout configures listening time, longer = more distance (ms)
-board.set_pin_mode_sonar(trigPinUs2, echoPinUs2, timeout=200000)
-board.set_pin_mode_sonar(trigPinUs3, echoPinUs3, timeout=200000)
-board.set_pin_mode_sonar(trigPinUs4, echoPinUs4, timeout=200000)
+board.set_pin_mode_sonar(TRIG_PIN_US_1, ECHO_PIN_US_1, timeout=200000)  #Ultrasonic sensors
+board.set_pin_mode_sonar(TRIG_PIN_US_2, ECHO_PIN_US_2, timeout=200000)  #timeout configures listening time, longer = more distance (ms)
+board.set_pin_mode_sonar(TRIG_PIN_US_3, ECHO_PIN_US_3, timeout=200000)
+board.set_pin_mode_sonar(TRIG_PIN_US_4, ECHO_PIN_US_4, timeout=200000)
 # board.set_pin_mode_sonar(trigPinUs5, echoPinUs5, timeout=200000) #CURRENTLY UNAVAILABLE
+
+board.set_pin_mode_digital_input_pullup(PB_PIN_1)   #Buttons
+board.set_pin_mode_digital_input_pullup(PB_PIN_2)
+
+board.set_pin_mode_analog_input(DS_PIN_1)   #Daylight sensors
+board.set_pin_mode_analog_input(DS_PIN_2)
 
 time.sleep(0.5) #config time
 
@@ -84,7 +95,7 @@ time.sleep(0.5) #config time
 allOff = 0
 
 diodeStateDict = {
-    "diodes": 0b00011111111111001001111111100100
+    "diodes": 0b00011111111111001001101011100100
 }
 
 TL1R   = 0
@@ -146,13 +157,13 @@ def write_to_shift_register(value):
         Returns:
             Does not return anything
     '''
-    board.digital_write(latchPin, 0) #readies shift register to listen (initial state low for all outputs)
+    board.digital_write(LATCH_PIN, 0) #readies shift register to listen (initial state low for all outputs)
     for i in range(31,-1,-1):
-        board.digital_write(dataPin, (value >> i) & 1)  #shifts value and ensures only 0s and 1s are pushed through
-        board.digital_write(clockPin, 1)  
-        board.digital_write(clockPin, 0)  #these two lines complete one clock cycle (pushes one bit)
+        board.digital_write(DATA_PIN, (value >> i) & 1)  #shifts value and ensures only 0s and 1s are pushed through
+        board.digital_write(CLOCK_PIN, 1)  
+        board.digital_write(CLOCK_PIN, 0)  #these two lines complete one clock cycle (pushes one bit)
 
-    board.digital_write(latchPin, 1) #executes the memory and lights the LEDs
+    board.digital_write(LATCH_PIN, 1) #executes the memory and lights the LEDs
 
 def tl_r_off_y_off_g_on(ledNumberRed, ledNumberYellow, ledNumberGreen):
     current = diodeStateDict["diodes"]
@@ -179,15 +190,29 @@ def tl_r_on_y_off_g_off(ledNumberRed, ledNumberYellow, ledNumberGreen):
     diodeStateDict["diodes"] = current
     write_to_shift_register(current)
 
+def tl_r_off_g_on(ledNumberRed, ledNumberGreen):
+    current = diodeStateDict["diodes"]
+    current = update_bit(current, ledNumberRed, OFF)
+    current = update_bit(current, ledNumberGreen, ON)
+    diodeStateDict["diodes"] = current
+    write_to_shift_register(current)
+
+def tl_r_on_g_oFF(ledNumberRed, ledNumberGreen):
+    current = diodeStateDict["diodes"]
+    current = update_bit(current, ledNumberRed, ON)
+    current = update_bit(current, ledNumberGreen, OFF)
+    diodeStateDict["diodes"] = current
+    write_to_shift_register(current)
+
 def update_traffic(sequence, action_30s, action_default):
 
     currentTime = time.time()
-    elapsed = currentTime - sequence["start_time"]
+    elapsed = currentTime - sequence["startTime"]
 
     if sequence["state"] == 1:
         if elapsed >= sequence["durations"][1]:
             sequence["state"] = 2
-            sequence["start_time"] = currentTime
+            sequence["startTime"] = currentTime
             action_30s()
 
     elif sequence["state"] == 2:
@@ -198,7 +223,7 @@ def update_traffic(sequence, action_30s, action_default):
 def start_sequence(sequence, action):
     if sequence["state"] == 0:  #prevents multiple timers from starting
         sequence["state"] = 1
-        sequence["start_time"] = time.time()
+        sequence["startTime"] = time.time()
         action()
 
 def check_overheight(heightTime, limit, ground):
@@ -232,8 +257,8 @@ def print_alert(heightTime,ground):
     print(f"Overheight was detected! vehicle height: {distanceCm}m at time: {formattedDate}")
 
 def subsystem_1():
-    us1Value = board.sonar_read(trigPinUs1)
-    us2Value = board.sonar_read(trigPinUs2)
+    us1Value = board.sonar_read(TRIG_PIN_US_1)
+    us2Value = board.sonar_read(TRIG_PIN_US_2)
 
     if check_overheight(us1Value, limit, GROUND) == True:
         if tl1Controller["state"] == 0:
@@ -254,37 +279,59 @@ def subsystem_1():
 
 def subsystem_2():
    currentTime = time.time()
-   if tl4tl5CycleController["state"]==0:
-       tl4tl5CycleController["state"]=1
-       tl4tl5CycleController["start_time"]=currentTime
+
+   buttonDataOne, timeStamp = board.digital_read(PB_PIN_1)  #default 1 (up)
+   buttonDataTwo, timeStamp  = board.digital_read(PB_PIN_2) #default 1 (up)
+   ldr_data = board.analog_read(DS_PIN_2)
+
+   elapsedButton = currentTime-buttonController["startTime"] 
+   stateButton = buttonController["state"]
+   if elapsedButton >= buttonController["durations"][stateButton]:
+       if buttonController["state"] == 1:
+           print("fok")
+           buttonController["state"] = 0
+
+       if (buttonDataOne == 0 or buttonDataTwo == 0) and buttonController["state"] == 0:
+            buttonController["state"] = 1
+            buttonController["startTime"] = currentTime
+            print("The pedestrian button has been pressed")
+
+   if buttonController["state"] == 1:
+       if tl4tl5CycleController["state"] == 1 or tl4tl5CycleController["state"] == 2:
+           #Force TL4 to go yellow for 3s
+           print("a")
+       elif
+            print("a")
+        
+#------------------------Cycling sequence------------------------
+
+   if tl4tl5CycleController["state"] == 0:
+       tl4tl5CycleController["state"] = 1
+       tl4tl5CycleController["startTime"] = currentTime
        tl_r_off_y_off_g_on(TL4R, TL4Y, TL4G)
        tl_r_on_y_off_g_off(TL5R, TL5Y, TL5G)
        return
     
    state = tl4tl5CycleController["state"]
-   elapsed = currentTime-tl4tl5CycleController["start_time"]
+   elapsed = currentTime-tl4tl5CycleController["startTime"]
 
    if elapsed >= tl4tl5CycleController["durations"][state]:
        nextState = (state+1)%4 # returns to 0
        tl4tl5CycleController["state"] = nextState
-       tl4tl5CycleController["start_time"] = currentTime
+       tl4tl5CycleController["startTime"] = currentTime
 
-       if nextState == 1:
-            # TL4 Green, TL5 Red (20s)
+       if nextState == 1:   #TL4 Green, TL5 Red (20s)
             tl_r_off_y_off_g_on(TL4R, TL4Y, TL4G)
             tl_r_on_y_off_g_off(TL5R, TL5Y, TL5G)
-       elif nextState == 2:
-            # TL4 Yellow, TL5 Red (3s)
+       elif nextState == 2: #TL4 Yellow, TL5 Red (3s)
             tl_r_off_y_on_g_off(TL4R, TL4Y, TL4G)
             tl_r_on_y_off_g_off(TL5R, TL5Y, TL5G)
 
-       elif nextState == 3:
-            # TL4 Red, TL5 Green (10s)
+       elif nextState == 3: #TL4 Red, TL5 Green (10s)
             tl_r_on_y_off_g_off(TL4R, TL4Y, TL4G)
             tl_r_off_y_off_g_on(TL5R, TL5Y, TL5G)
 
-       elif nextState == 4:
-            # TL4 Red, TL5 Yellow (3s)
+       elif nextState == 4: #TL4 Red, TL5 Yellow (3s)
             tl_r_on_y_off_g_off(TL4R, TL4Y, TL4G)
             tl_r_off_y_on_g_off(TL5R, TL5Y, TL5G)
 
