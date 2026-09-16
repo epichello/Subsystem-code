@@ -33,23 +33,23 @@ DS_PIN_2 = 4  # A4
 
 PA_PIN_1 = 19
 
-# ------------------------Initialising variables------------------------
-
-# us1Value = 0
-# us2Value = 0
-# us3Value = 0
-# us4Value = 0
-# us5Value = 0
-
-tl1TimeTracker = 0
-tl2TimeTracker = 0
+# ------------------------Constants------------------------
 
 GROUND = 10  # ground is 10cm away from the supersonic sensors
 
 UP = 1 #button states
 DOWN = 0
 
-# ------------------------Timers------------------------
+ON = 1  
+OFF = 0
+
+NIGHT_THRESHOLD = 200   #Daylight sensor values
+
+DAY_THRESHOLD = 300 #100 deadzone to prevent random fluctuations
+
+# ------------------------Controllers------------------------
+
+diodeStateDict = {"diodes": 0b00011111111111001001101011100100}
 
 tl1Controller = {
     "state": 0,
@@ -65,11 +65,15 @@ tl2Controller = {
 }  # stage 1: 1s, stage 2: 10s
 
 
-tl4tl5CycleController = {
+tl4tl5CycleController = {   
     "state": 0,
     "startTime": 0.0,
-    "durations": {1: 20.0, 2: 3.0, 3: 10.0, 4: 3.0, 5: 40},
-}  # stage 1: 20s, stage 2: 3s, stage 3: 10s, stage 4: 3s
+    "durations": {1: 20.0, 2: 3.0, 3: 10.0, 4: 3.0, 5: 30.0, 6: 3.0, 7: 5.0, 8: 3.0, 9: 50},    #Stage 9, is for interruption cycle
+}  #Day cyle: stage 1: 20s, stage 2: 3s, stage 3: 10s, stage 4: 3s. Night cycle: stage 5: 30, stage 6: 3, stage 7: 5, stage 8: 3 
+
+ds2EnvironmentState = {
+    "isNight": False,
+}
 
 buttonController = {
     "state": 1,
@@ -107,10 +111,8 @@ board.set_pin_mode_analog_input(DS_PIN_2)
 
 time.sleep(0.5)  # config time
 
-# ---------------------shift register bits---------------------
-allOff = 0
-
-diodeStateDict = {"diodes": 0b00011111111111001001101011100100}
+# ---------------------Shift Register Constants---------------------
+ALLOFF = 0
 
 TL1R = 0
 TL1Y = 1
@@ -141,9 +143,6 @@ WL2R1 = 25  # left
 WL2R2 = 26  # middle left
 WL2R3 = 27  # middle right
 WL2R4 = 28  # right
-
-ON = 1
-OFF = 0
 
 # -------------------------------------------------
 
@@ -337,9 +336,15 @@ def subsystem_1():
 
 def subsystem_2():
     currentTime = time.time()
-    buttonDataOne, timeStamp = board.digital_read(PB_PIN_1)  # default 1 (up)
-    buttonDataTwo, timeStamp = board.digital_read(PB_PIN_2)  # default 1 (up)
-    ldr_data = board.analog_read(DS_PIN_2)
+    buttonDataOne, timeStampPb1 = board.digital_read(PB_PIN_1)  # default 1 (up)
+    buttonDataTwo, timeStampPb2 = board.digital_read(PB_PIN_2)  # default 1 (up)
+    ldr_data2, timeStampDs2 = board.analog_read(DS_PIN_2)
+    print(ldr_data2)
+
+    if ldr_data2 < NIGHT_THRESHOLD:
+        ds2EnvironmentState["isNight"] = True
+    elif ldr_data2 > DAY_THRESHOLD:
+        ds2EnvironmentState["isNight"] = False
 
     elapsedButton = currentTime - buttonController["startTime"]
     stateButton = buttonController["state"]
@@ -354,12 +359,13 @@ def subsystem_2():
         elapsedButton = 0.0 
         stateButton = DOWN
 
-        if tl4tl5CycleController["state"] in (1, 2):
+        if tl4tl5CycleController["state"] in (1, 2, 5, 6):
             pedestrianInterrupt["freezeState"] = 4
         else:
             pedestrianInterrupt["freezeState"] = 5
 
-        tl4tl5CycleController["state"] = 5 #stops the original cycle
+
+        tl4tl5CycleController["state"] = 9 #stops the original cycle
         
         pedestrianInterrupt["state"] = 1
         pedestrianInterrupt["startTime"] = currentTime
@@ -376,7 +382,7 @@ def subsystem_2():
                     tl_r_off_y_on_g_off(TL4R, TL4Y, TL4G)   # Force TL4 to go yellow for 3s, TL5 stays red
                     tl_r_on_y_off_g_off(TL5R, TL5Y, TL5G)            
                 else:
-                    tl_r_on_y_off_g_off(TL4R, TL4Y, TL4G)   # Force TL4 to go yellow for 3s, TL5 stays red
+                    tl_r_on_y_off_g_off(TL4R, TL4Y, TL4G)   # Force TL5 to go yellow for 3s, TL4 stays red
                     tl_r_off_y_on_g_off(TL5R, TL5Y, TL5G)
                 pedestrianInterrupt["state"] = 2
                 pedestrianInterrupt["startTime"] = currentTime
@@ -401,7 +407,10 @@ def subsystem_2():
                     tl_r_on_g_off(PL2R, PL2G)
                     
                     pedestrianInterrupt["state"] = 0
+
+                    
                     tl4tl5CycleController["state"] = 0
+
                 else:
                     if int(elapsedInterrupt * 5) % 2 == 0:
                         tl_r_on_g_off(PL1R, PL1G)
@@ -409,10 +418,6 @@ def subsystem_2():
                     else:
                         tl_r_off_g_off(PL1R, PL1G)
                         tl_r_off_g_off(PL2R, PL2G)
-                
-            elif (elapsedInterrupt >= pedestrianInterrupt["durations"][stateInterrupt]) and pedestrianInterrupt["state"] == 4:
-                pedestrianInterrupt["state"] = 0
-                tl4tl5CycleController["state"] = 0
 
         if (elapsedButton >= buttonController["durations"][stateButton]) and buttonController["state"] == DOWN:  #button has been pressed & only allows when 30s has passed
             buttonController["state"] = UP
@@ -420,13 +425,18 @@ def subsystem_2():
 
 
     # ------------------------Cycling sequence------------------------
-
-    if tl4tl5CycleController["state"] == 5:
+    
+    if tl4tl5CycleController["state"] == 9:
         # print("this is happening")
         return
+
     
     if tl4tl5CycleController["state"] == 0:
-        tl4tl5CycleController["state"] = 1
+        if ds2EnvironmentState["isNight"] == True:
+            tl4tl5CycleController["state"] = 5
+        else:
+            tl4tl5CycleController["state"] = 1
+
         tl4tl5CycleController["startTime"] = currentTime
         tl_r_off_y_off_g_on(TL4R, TL4Y, TL4G)
         tl_r_on_y_off_g_off(TL5R, TL5Y, TL5G)
@@ -436,22 +446,25 @@ def subsystem_2():
     elapsed = currentTime - tl4tl5CycleController["startTime"]
 
     if elapsed >= tl4tl5CycleController["durations"][state]:
-        nextState = (state % 4) + 1  # returns to 0
+        if ds2EnvironmentState["isNight"] == True:
+            nextState = (state % 4) + 5  #Add 5 to start from 5 when modulo returns 0 to cycle different times
+        else:
+            nextState = (state % 4) + 1
         tl4tl5CycleController["state"] = nextState
         tl4tl5CycleController["startTime"] = currentTime
 
-        if nextState == 1:  # TL4 Green, TL5 Red (20s)
+        if nextState == 1 or nextState == 5:  # TL4 Green, TL5 Red (20s or 30s if night)
             tl_r_off_y_off_g_on(TL4R, TL4Y, TL4G)
             tl_r_on_y_off_g_off(TL5R, TL5Y, TL5G)
-        elif nextState == 2:  # TL4 Yellow, TL5 Red (3s)
+        elif nextState == 2 or nextState == 6:  # TL4 Yellow, TL5 Red (3s)
             tl_r_off_y_on_g_off(TL4R, TL4Y, TL4G)
             tl_r_on_y_off_g_off(TL5R, TL5Y, TL5G)
 
-        elif nextState == 3:  # TL4 Red, TL5 Green (10s)
+        elif nextState == 3 or nextState == 7:  # TL4 Red, TL5 Green (10s or 5s if night)
             tl_r_on_y_off_g_off(TL4R, TL4Y, TL4G)
             tl_r_off_y_off_g_on(TL5R, TL5Y, TL5G)
 
-        elif nextState == 4:  # TL4 Red, TL5 Yellow (3s)
+        elif nextState == 4 or nextState == 8:  # TL4 Red, TL5 Yellow (3s)
             tl_r_on_y_off_g_off(TL4R, TL4Y, TL4G)
             tl_r_off_y_on_g_off(TL5R, TL5Y, TL5G)
 
@@ -497,7 +510,7 @@ try:
         time.sleep(0.2)
 except KeyboardInterrupt:
     print("Quitting the program")
-    write_to_shift_register(0)
+    write_to_shift_register(ALLOFF)
     time.sleep(0.5)
     board.shutdown()
     time.sleep(0.5)
