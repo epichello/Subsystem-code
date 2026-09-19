@@ -39,7 +39,7 @@ PA_PIN_1 = 19
 
 # ------------------------Constants------------------------
 
-GROUND = 10  # ground is 10cm away from the supersonic sensors
+GROUND = 20  # ground is 10cm away from the supersonic sensors
 
 UP = 1 #button states
 DOWN = 0
@@ -51,9 +51,11 @@ NIGHT_THRESHOLD = 200   #Daylight sensor values
 
 DAY_THRESHOLD = 300 #100 deadzone to prevent random fluctuations
 
+ERROR_MARGIN = 5 #5cm
+
 # ------------------------Controllers------------------------
 
-diodeStateDict = {"diodes": 0b00011111100100001001101011100100}
+diodeStateDict = {"diodes": 0b0000000100100001001101011100100}
 
 tl1Controller = {
     "state": 0,
@@ -103,16 +105,26 @@ pedestrianInterrupt = {
     "freezeState": 4, #Used to check the state after the 2s wait later
 }
 
+us45Controller = {
+    "us4Detect": False,
+}
+
+wl2Controller = {
+    "hz": 2,
+    "startTime": 0.0,
+    "state": 0,
+}
+
 # ---------------------Registering pins----------------------------
 board.set_pin_mode_digital_output(CLOCK_PIN)  # Shift register
 board.set_pin_mode_digital_output(LATCH_PIN)
 board.set_pin_mode_digital_output(DATA_PIN)
 
-board.set_pin_mode_sonar(TRIG_PIN_US_1, ECHO_PIN_US_1, timeout=5000)  # Ultrasonic sensors
-board.set_pin_mode_sonar(TRIG_PIN_US_2, ECHO_PIN_US_2, timeout=5000)  # timeout configures listening time, longer = more distance (ms)
-board.set_pin_mode_sonar(TRIG_PIN_US_3, ECHO_PIN_US_3, timeout=5000)  #5000 - 50-70cm range
-board.set_pin_mode_sonar(TRIG_PIN_US_4, ECHO_PIN_US_4, timeout=5000)
-board.set_pin_mode_sonar(TRIG_PIN_US_5, ECHO_PIN_US_5, timeout=5000)
+board.set_pin_mode_sonar(TRIG_PIN_US_1, ECHO_PIN_US_1, timeout=2500)  # Ultrasonic sensors
+board.set_pin_mode_sonar(TRIG_PIN_US_2, ECHO_PIN_US_2, timeout=2500)  # timeout configures listening time, longer = more distance (ms)
+board.set_pin_mode_sonar(TRIG_PIN_US_3, ECHO_PIN_US_3, timeout=2500)  #5000 - 50-70cm range
+board.set_pin_mode_sonar(TRIG_PIN_US_4, ECHO_PIN_US_4, timeout=2500)  #2500 - 30cm max range
+board.set_pin_mode_sonar(TRIG_PIN_US_5, ECHO_PIN_US_5, timeout=2500)
 
 board.set_pin_mode_digital_input_pullup(PB_1_2_PIN)  # Buttons
 
@@ -194,6 +206,30 @@ def write_to_shift_register(value):
         time.sleep(0.001)
 
     board.digital_write(LATCH_PIN, 1)  # executes the memory and lights the LEDs
+
+def tl_on_off_on_off(ledNumber1, ledNumber2, ledNumber3, ledNumber4):
+    current = diodeStateDict["diodes"]
+    current = update_bit(current, ledNumber1, ON)
+    current = update_bit(current, ledNumber2, OFF)
+    current = update_bit(current, ledNumber3, ON)
+    current = update_bit(current, ledNumber4, OFF)
+    diodeStateDict["diodes"] = current
+
+def tl_off_on_off_on(ledNumber1, ledNumber2, ledNumber3, ledNumber4):
+    current = diodeStateDict["diodes"]
+    current = update_bit(current, ledNumber1, OFF)
+    current = update_bit(current, ledNumber2, ON)
+    current = update_bit(current, ledNumber3, OFF)
+    current = update_bit(current, ledNumber4, ON)
+    diodeStateDict["diodes"] = current
+
+def tl_off_off_off_off(ledNumber1, ledNumber2, ledNumber3, ledNumber4):
+    current = diodeStateDict["diodes"]
+    current = update_bit(current, ledNumber1, OFF)
+    current = update_bit(current, ledNumber2, OFF)
+    current = update_bit(current, ledNumber3, OFF)
+    current = update_bit(current, ledNumber4, OFF)
+    diodeStateDict["diodes"] = current
 
 def tl_r_off_y_off_g_on(ledNumberRed, ledNumberYellow, ledNumberGreen):
     current = diodeStateDict["diodes"]
@@ -558,10 +594,41 @@ def subsystem_3():
                 tl6Controller["startTime"] = currentTime
 
             elif nextState in (3,6):
+                tl6Controller["freeze"] = 0
                 tl_r_on_y_off_g_off(TL6R, TL6Y, TL6G)
                 tl6Controller["state"] = 3  #freeze state
 
+def subsystem_4():
+    #2hz flashing - 1s per XOXO/OXOX
+    us3Value = board.sonar_read(TRIG_PIN_US_3)  #[distance, timestamp]
+    us4Value = board.sonar_read(TRIG_PIN_US_4)  #[distance, timestamp]
+    #first flash off on off on
 
+    currentTime = time.time()
+    elapsed = currentTime - wl2Controller["startTime"] 
+
+    ValueCheck = abs(us3Value[0] - us4Value[0]) <= ERROR_MARGIN
+
+    if check_overheight(us3Value, limit, GROUND) == True and check_overheight(us4Value, limit, GROUND) == True and ValueCheck == True:
+        tl_r_on_g_off(TL3R, TL3G)
+
+        if wl2Controller["state"] == 0:
+            wl2Controller["startTime"] = currentTime
+            wl2Controller["state"] = 1
+            elapsed = 0.0
+        
+        if wl2Controller["state"] == 1:
+            if int(elapsed*4)%2 == 0: #times 4 cause we are doing 2hz, so 4 state changes int truncates so we can use modulo properly
+                tl_off_on_off_on(WL2R1, WL2R2, WL2R3, WL2R4)
+            else:
+                tl_on_off_on_off(WL2R1, WL2R2, WL2R3, WL2R4)
+    else:
+        tl_r_off_g_on(TL3R, TL3G)
+        tl_off_off_off_off(WL2R1, WL2R2, WL2R3, WL2R4)
+        wl2Controller["state"] = 0
+     
+
+    
             
 
 
@@ -607,6 +674,7 @@ try:
         subsystem_1()
         subsystem_2()
         subsystem_3()
+        subsystem_4()
 
         if diodeStateDict["diodes"] != previous_diodes: #Lowers the amount of bits goings to the shift register, decreases component load
             write_to_shift_register(diodeStateDict["diodes"])
