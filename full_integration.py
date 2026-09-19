@@ -35,8 +35,6 @@ DATA_PIN = 16
 DS_PIN_1 = 3  # A3
 DS_PIN_2 = 4  # A4
 
-PA_PIN_1 = 19
-
 # ------------------------Constants------------------------
 
 GROUND = 20  # ground is 10cm away from the supersonic sensors
@@ -47,6 +45,8 @@ DOWN = 0
 ON = 1  
 OFF = 0
 
+FILTER_WINDOW = 5  #avg last 5 readings 
+
 NIGHT_THRESHOLD = 200   #Daylight sensor values
 
 DAY_THRESHOLD = 300 #100 deadzone to prevent random fluctuations
@@ -55,7 +55,13 @@ ERROR_MARGIN = 5 #5cm
 
 # ------------------------Controllers------------------------
 
-diodeStateDict = {"diodes": 0b0000000100100001001101011100100}
+diodeStateDict = {"diodes": 0b0000000100100001001101000100100}
+
+
+sensor_history = {
+    "US1": [],
+    "US2": []
+}
 
 tl1Controller = {
     "state": 0,
@@ -109,6 +115,12 @@ us45Controller = {
     "us4Detect": False,
 }
 
+wl1Controller = {
+    "hz": 2,
+    "startTime": 0.0,
+    "state": 0,
+}
+
 wl2Controller = {
     "hz": 2,
     "startTime": 0.0,
@@ -142,8 +154,8 @@ TL1G = 2
 TL2R = 3
 TL2Y = 4
 TL2G = 5
-WL1YL = 6
-WL1YL = 7
+WL1L = 6
+WL1R = 7
 PL1G = 8
 PL1R = 9
 PL2G = 10
@@ -335,6 +347,23 @@ def print_alert(heightTime, ground):
         f"Overheight was detected! vehicle height: {distanceCm}m at time: {formattedDate}"
     )
 
+def apply_moving_average(raw_reading, history_list, window_size):
+
+    if (raw_reading or raw_reading[0]) == None or raw_reading[0] == 0:
+        return raw_reading 
+        
+    distance = raw_reading[0]
+    timestamp = raw_reading[1]
+    
+    history_list.append(distance)
+    
+    if len(history_list) > window_size:
+        history_list.pop(0) #removes last (oldest item)
+
+    avg_distance = sum(history_list) / len(history_list)
+    
+    return [avg_distance, timestamp]
+
 #---delete when done----------------
 mock_input_queue = queue.Queue()
 
@@ -359,7 +388,7 @@ input_thread.start()
 last_us1_value = [15.0, time.time()]
 #----------------------------------
 
-def subsystem_1():
+def subsystem_1(us1History, us2History):
 
     #--------delete when done--------------
     global last_us1_value
@@ -374,8 +403,14 @@ def subsystem_1():
     us1Value = last_us1_value
 
     #-------------------------------------------
-    # us1Value = board.sonar_read(TRIG_PIN_US_1)
-    us2Value = board.sonar_read(TRIG_PIN_US_2)
+    #us1ValueRaw = board.sonar_read(TRIG_PIN_US_1)
+    us2ValueRaw = board.sonar_read(TRIG_PIN_US_2)
+
+    #us1Value = apply_moving_average(us1ValueRaw, us1History, 5)
+    us2Value = apply_moving_average(us2ValueRaw, us2History, 5)
+
+    currentTime = time.time()
+    elapsed = currentTime - wl1Controller["startTime"] 
 
     if check_overheight(us1Value, limit, GROUND) == True:
         if tl1Controller["state"] == 0:
@@ -389,13 +424,14 @@ def subsystem_1():
     )
 
     if check_overheight(us2Value, limit, GROUND) == True:
+
         start_sequence(tl2Controller, lambda: tl_r_off_y_on_g_off(TL2R, TL2Y, TL2G))
     update_traffic(
         tl2Controller,
         lambda: tl_r_on_y_off_g_off(TL2R, TL2Y, TL2G),
         lambda: tl_r_off_y_off_g_on(TL2R, TL2Y, TL2G),
     )
-
+    
     if tl1Controller["state"] == 0 and tl2Controller["state"] == 1:
         start_sequence(tl1Controller, lambda: tl_r_off_y_on_g_off(TL1R, TL1Y, TL1G))
         update_traffic(
@@ -409,6 +445,24 @@ def subsystem_1():
             lambda: tl_r_on_y_off_g_off(TL2R, TL2Y, TL2G),
             lambda: tl_r_off_y_off_g_on(TL2R, TL2Y, TL2G),
         )
+    
+    if tl1Controller["state"] != 0 or tl2Controller["state"] != 0:
+        elapsed = currentTime - wl1Controller["startTime"]
+
+        if wl1Controller["state"] == 0:
+            wl1Controller["startTime"] = currentTime
+            wl1Controller["state"] = 1
+            elapsed = 0.0
+            
+        if wl1Controller["state"] == 1:
+            if int(elapsed * (wl1Controller["hz"] * 2)) % 2 == 0:
+                tl_r_off_g_on(WL1L, WL1R)
+            else:
+                tl_r_on_g_off(WL1L, WL1R)
+
+        else:
+            tl_r_off_g_off(WL1L, WL1R)
+            wl1Controller["state"] = 0
 
 def subsystem_2():
     currentTime = time.time()
@@ -618,7 +672,8 @@ def subsystem_4():
             elapsed = 0.0
         
         if wl2Controller["state"] == 1:
-            if int(elapsed*4)%2 == 0: #times 4 cause we are doing 2hz, so 4 state changes int truncates so we can use modulo properly
+            
+            if int(elapsed*(wl2Controller["hz"]*2))%2 == 0: #times 2 cause we are doing 2hz/3hz, so 4/6 state changes int truncates so we can use modulo properly
                 tl_off_on_off_on(WL2R1, WL2R2, WL2R3, WL2R4)
             else:
                 tl_on_off_on_off(WL2R1, WL2R2, WL2R3, WL2R4)
@@ -670,8 +725,10 @@ previous_diodes = diodeStateDict["diodes"]
 
 try:
     while True:
+        us1_moving_average_list = []
+        us2_moving_average_list = []
 
-        subsystem_1()
+        subsystem_1(us1_moving_average_list, us2_moving_average_list)
         subsystem_2()
         subsystem_3()
         subsystem_4()
