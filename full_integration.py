@@ -3,6 +3,11 @@ import time
 import math
 import random
 
+#----Temp stuff (delete when done)
+import queue
+import threading
+#----
+
 board = pymata4.Pymata4()  # board initialisation
 
 # ---------------------Full-pin-layout---------------------
@@ -19,10 +24,9 @@ TRIG_PIN_US_4 = 8
 ECHO_PIN_US_4 = 9
 
 TRIG_PIN_US_5 = 10
-ECHO_PIN_US_5 = 11
+ECHO_PIN_US_5 = 12
 
-PB_PIN_1 = 12
-PB_PIN_2 = 13
+PB_1_2_PIN = 13
 
 CLOCK_PIN = 14  # A0
 LATCH_PIN = 15
@@ -49,7 +53,7 @@ DAY_THRESHOLD = 300 #100 deadzone to prevent random fluctuations
 
 # ------------------------Controllers------------------------
 
-diodeStateDict = {"diodes": 0b00011111111111001001101011100100}
+diodeStateDict = {"diodes": 0b00011111100100001001101011100100}
 
 tl1Controller = {
     "state": 0,
@@ -70,6 +74,17 @@ tl4tl5CycleController = {
     "startTime": 0.0,
     "durations": {1: 20.0, 2: 3.0, 3: 10.0, 4: 3.0, 5: 30.0, 6: 3.0, 7: 5.0, 8: 3.0, 9: 50},    #Stage 9, is for interruption cycle
 }  #Day cyle: stage 1: 20s, stage 2: 3s, stage 3: 10s, stage 4: 3s. Night cycle: stage 5: 30, stage 6: 3, stage 7: 5, stage 8: 3 
+
+tl6Controller = {
+    "state": 0,
+    "startTime": 0.0,
+    "durations": {1: 5.0, 2: 3.0, 3: 1.0, 4: 10.0, 5: 3.0, 6: 60.0},   #Stage 5 for interruption 
+    "freeze": 0, #to stop at red
+}   
+
+ds1EnvironmentState = {
+    "isNight": False,
+}
 
 ds2EnvironmentState = {
     "isNight": False,
@@ -93,18 +108,13 @@ board.set_pin_mode_digital_output(CLOCK_PIN)  # Shift register
 board.set_pin_mode_digital_output(LATCH_PIN)
 board.set_pin_mode_digital_output(DATA_PIN)
 
-board.set_pin_mode_sonar(
-    TRIG_PIN_US_1, ECHO_PIN_US_1, timeout=200000
-)  # Ultrasonic sensors
-board.set_pin_mode_sonar(
-    TRIG_PIN_US_2, ECHO_PIN_US_2, timeout=200000
-)  # timeout configures listening time, longer = more distance (ms)
-board.set_pin_mode_sonar(TRIG_PIN_US_3, ECHO_PIN_US_3, timeout=200000)
-board.set_pin_mode_sonar(TRIG_PIN_US_4, ECHO_PIN_US_4, timeout=200000)
-# board.set_pin_mode_sonar(trigPinUs5, echoPinUs5, timeout=200000) #CURRENTLY UNAVAILABLE
+board.set_pin_mode_sonar(TRIG_PIN_US_1, ECHO_PIN_US_1, timeout=5000)  # Ultrasonic sensors
+board.set_pin_mode_sonar(TRIG_PIN_US_2, ECHO_PIN_US_2, timeout=5000)  # timeout configures listening time, longer = more distance (ms)
+board.set_pin_mode_sonar(TRIG_PIN_US_3, ECHO_PIN_US_3, timeout=5000)  #5000 - 50-70cm range
+board.set_pin_mode_sonar(TRIG_PIN_US_4, ECHO_PIN_US_4, timeout=5000)
+board.set_pin_mode_sonar(TRIG_PIN_US_5, ECHO_PIN_US_5, timeout=5000)
 
-board.set_pin_mode_digital_input_pullup(PB_PIN_1)  # Buttons
-board.set_pin_mode_digital_input_pullup(PB_PIN_2)
+board.set_pin_mode_digital_input_pullup(PB_1_2_PIN)  # Buttons
 
 board.set_pin_mode_analog_input(DS_PIN_1)  # Daylight sensors
 board.set_pin_mode_analog_input(DS_PIN_2)
@@ -166,7 +176,6 @@ def update_bit(diodeState, ledNumber, state):
             1 << ledNumber
         )  # RHS creates temp 32-bit number; compares RHS bit with LHS bit using NAND operator
 
-
 def write_to_shift_register(value):
     """
     Used to write to shift register activating pins by given value
@@ -179,16 +188,12 @@ def write_to_shift_register(value):
         LATCH_PIN, 0
     )  # readies shift register to listen (initial state low for all outputs)
     for i in range(31, -1, -1):
-        board.digital_write(
-            DATA_PIN, (value >> i) & 1
-        )  # shifts value and ensures only 0s and 1s are pushed through
+        board.digital_write(DATA_PIN, (value >> i) & 1)  # shifts value and ensures only 0s and 1s are pushed through
         board.digital_write(CLOCK_PIN, 1)
-        board.digital_write(
-            CLOCK_PIN, 0
-        )  # these two lines complete one clock cycle (pushes one bit)
+        board.digital_write(CLOCK_PIN, 0)  # these two lines complete one clock cycle (pushes one bit)
+        time.sleep(0.001)
 
     board.digital_write(LATCH_PIN, 1)  # executes the memory and lights the LEDs
-
 
 def tl_r_off_y_off_g_on(ledNumberRed, ledNumberYellow, ledNumberGreen):
     current = diodeStateDict["diodes"]
@@ -198,7 +203,6 @@ def tl_r_off_y_off_g_on(ledNumberRed, ledNumberYellow, ledNumberGreen):
     diodeStateDict["diodes"] = current
     # write_to_shift_register(current)
 
-
 def tl_r_off_y_on_g_off(ledNumberRed, ledNumberYellow, ledNumberGreen):
     current = diodeStateDict["diodes"]
     current = update_bit(current, ledNumberRed, OFF)
@@ -206,7 +210,6 @@ def tl_r_off_y_on_g_off(ledNumberRed, ledNumberYellow, ledNumberGreen):
     current = update_bit(current, ledNumberGreen, OFF)
     diodeStateDict["diodes"] = current
     # write_to_shift_register(current)
-
 
 def tl_r_on_y_off_g_off(ledNumberRed, ledNumberYellow, ledNumberGreen):
     current = diodeStateDict["diodes"]
@@ -216,14 +219,12 @@ def tl_r_on_y_off_g_off(ledNumberRed, ledNumberYellow, ledNumberGreen):
     diodeStateDict["diodes"] = current
     # write_to_shift_register(current)
 
-
 def tl_r_off_g_on(ledNumberRed, ledNumberGreen):
     current = diodeStateDict["diodes"]
     current = update_bit(current, ledNumberRed, OFF)
     current = update_bit(current, ledNumberGreen, ON)
     diodeStateDict["diodes"] = current
     # write_to_shift_register(current)
-
 
 def tl_r_on_g_off(ledNumberRed, ledNumberGreen):
     current = diodeStateDict["diodes"]
@@ -238,7 +239,13 @@ def tl_r_off_g_off(ledNumberRed, ledNumberGreen):
     current = update_bit(current, ledNumberGreen, OFF)
     diodeStateDict["diodes"] = current
 
-def update_traffic(sequence, action_30s, action_default):
+def tl_r_on_g_on(ledNumberRed, ledNumberGreen):
+    current = diodeStateDict["diodes"]
+    current = update_bit(current, ledNumberRed, ON)
+    current = update_bit(current, ledNumberGreen, ON)
+    diodeStateDict["diodes"] = current
+
+def update_traffic(sequence, action, action_default):
 
     currentTime = time.time()
     elapsed = currentTime - sequence["startTime"]
@@ -247,20 +254,18 @@ def update_traffic(sequence, action_30s, action_default):
         if elapsed >= sequence["durations"][1]:
             sequence["state"] = 2
             sequence["startTime"] = currentTime
-            action_30s()
+            action()
 
     elif sequence["state"] == 2:
         if elapsed >= sequence["durations"][2]:
             sequence["state"] = 0
             action_default()
 
-
 def start_sequence(sequence, action):
     if sequence["state"] == 0:  # prevents multiple timers from starting
         sequence["state"] = 1
         sequence["startTime"] = time.time()
         action()
-
 
 def check_overheight(heightTime, limit, ground):
     """
@@ -278,7 +283,6 @@ def check_overheight(heightTime, limit, ground):
 
     return False
 
-
 def print_alert(heightTime, ground):
     """
     Used to check if the height is overheight and print an alert if it is
@@ -295,9 +299,46 @@ def print_alert(heightTime, ground):
         f"Overheight was detected! vehicle height: {distanceCm}m at time: {formattedDate}"
     )
 
+#---delete when done----------------
+mock_input_queue = queue.Queue()
+
+def keyboard_listener():
+    """Background thread to read terminal input without blocking the main loop."""
+    while True:
+        try:
+            line = input()
+            val = float(line.strip())
+            mock_input_queue.put(val)
+            print(f"[MANUAL OVERRIDE] Set US1 distance to: {val} cm")
+        except ValueError:
+            pass
+        except EOFError:
+            break
+
+# Start the listener thread as a daemon (closes automatically when script stops)
+input_thread = threading.Thread(target=keyboard_listener, daemon=True)
+input_thread.start()
+
+# Default fallback value: distance = 15 cm (below threshold), current timestamp
+last_us1_value = [15.0, time.time()]
+#----------------------------------
 
 def subsystem_1():
-    us1Value = board.sonar_read(TRIG_PIN_US_1)
+
+    #--------delete when done--------------
+    global last_us1_value
+
+    try:
+        new_dist = mock_input_queue.get_nowait()
+        last_us1_value = [new_dist, time.time()]
+    except queue.Empty:
+        # Keep previous distance, update timestamp to now
+        last_us1_value[1] = time.time()
+
+    us1Value = last_us1_value
+
+    #-------------------------------------------
+    # us1Value = board.sonar_read(TRIG_PIN_US_1)
     us2Value = board.sonar_read(TRIG_PIN_US_2)
 
     if check_overheight(us1Value, limit, GROUND) == True:
@@ -333,13 +374,11 @@ def subsystem_1():
             lambda: tl_r_off_y_off_g_on(TL2R, TL2Y, TL2G),
         )
 
-
 def subsystem_2():
     currentTime = time.time()
-    buttonDataOne, timeStampPb1 = board.digital_read(PB_PIN_1)  # default 1 (up)
-    buttonDataTwo, timeStampPb2 = board.digital_read(PB_PIN_2)  # default 1 (up)
+    buttonData, timeStampPb12 = board.digital_read(PB_1_2_PIN)  # default 1 (up)
     ldr_data2, timeStampDs2 = board.analog_read(DS_PIN_2)
-    print(ldr_data2)
+    # print(ldr_data2)
 
     if ldr_data2 < NIGHT_THRESHOLD:
         ds2EnvironmentState["isNight"] = True
@@ -351,7 +390,7 @@ def subsystem_2():
     elapsedInterrupt = currentTime - pedestrianInterrupt["startTime"]
     stateInterrupt = pedestrianInterrupt["state"]
 
-    if (buttonDataOne == DOWN or buttonDataTwo == DOWN) and buttonController["state"] == UP:
+    if (buttonData == DOWN) and buttonController["state"] == UP:
         
         buttonController["state"] = DOWN
         buttonController["startTime"] = currentTime
@@ -468,6 +507,71 @@ def subsystem_2():
             tl_r_on_y_off_g_off(TL4R, TL4Y, TL4G)
             tl_r_off_y_on_g_off(TL5R, TL5Y, TL5G)
 
+def subsystem_3():
+    us5Value = board.sonar_read(TRIG_PIN_US_5)  #[distance, timestamp]
+    ldr_data1, timeStampDs2 = board.analog_read(DS_PIN_1)
+    currentTime = time.time()
+
+    if ldr_data1 < NIGHT_THRESHOLD:
+        ds1EnvironmentState["isNight"] = True
+    elif ldr_data1 > DAY_THRESHOLD:
+        ds1EnvironmentState["isNight"] = False
+
+    if check_overheight(us5Value, limit, GROUND) == True:
+        if ds1EnvironmentState["isNight"] == True:
+            tl6Controller["state"] = 4
+        else:    
+            tl6Controller["state"] = 1
+            
+        tl_r_off_y_off_g_on(TL6R, TL6Y, TL6G)
+        tl6Controller["startTime"] = currentTime
+
+    state = tl6Controller["state"]
+    elapsed = currentTime - tl6Controller["startTime"]
+
+    if check_overheight(us5Value, limit, GROUND) == True and tl6Controller["state"] in (1,2):
+        if elapsed >= tl6Controller["durations"][state]:
+            tl6Controller["freeze"] = 1
+
+    if check_overheight(us5Value, limit, GROUND) == True and ds1EnvironmentState["isNight"] == True:
+        tl_r_on_g_on(FL1, FL2)
+    else:
+        tl_r_off_g_off(FL1, FL2)
+
+    if tl6Controller["state"] not in (0,6):
+        if elapsed >= tl6Controller["durations"][state]:
+            if ds1EnvironmentState["isNight"] == True:
+                nextState = (state % 3) + 4
+            else:
+                nextState = (state % 3) + 1
+
+            if tl6Controller["freeze"] == 1:
+
+                tl6Controller["state"] = 0
+                tl6Controller["freeze"] = 0
+                return
+            
+            elif nextState in (2,5):
+                tl6Controller["freeze"] = 0 #remove freeze if there was previously a freeze
+                tl_r_off_y_on_g_off(TL6R, TL6Y, TL6G)
+                tl6Controller["state"] = 2
+                tl6Controller["startTime"] = currentTime
+
+            elif nextState in (3,6):
+                tl_r_on_y_off_g_off(TL6R, TL6Y, TL6G)
+                tl6Controller["state"] = 3  #freeze state
+
+
+            
+
+
+
+
+
+
+
+            
+
 
 # ----------------------User Input---------------------
 
@@ -502,8 +606,9 @@ try:
 
         subsystem_1()
         subsystem_2()
+        subsystem_3()
 
-        if diodeStateDict["diodes"] != previous_diodes:
+        if diodeStateDict["diodes"] != previous_diodes: #Lowers the amount of bits goings to the shift register, decreases component load
             write_to_shift_register(diodeStateDict["diodes"])
             previous_diodes = diodeStateDict["diodes"]  
 
