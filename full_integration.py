@@ -144,6 +144,18 @@ wl2Controller = {
     "state": 0,
 }
 
+lockdownController = {
+    "isActive": False,
+    "us5HasSeenVehicle": False,
+    "sensors": {
+        "us1": False,
+        "us2": False,
+        "us3": False,
+        "us4": False,
+        "us5": False
+    }
+}
+
 # ---------------------Registering pins----------------------------
 board.set_pin_mode_digital_output(CLOCK_PIN)  # Shift register
 board.set_pin_mode_digital_output(LATCH_PIN)
@@ -237,6 +249,16 @@ def write_to_shift_register(value):
     board.digital_write(LATCH_PIN, 1)  # executes the memory and lights the LEDs
 
 def tl_on_off_on_off(ledNumber1, ledNumber2, ledNumber3, ledNumber4):
+    """
+    Used to turn four LEDs on/off/on/off in order
+        Parameters:
+            ledNumber1 (int): Position of LED in shift register sequence 
+            ledNumber2 (int): Position of LED in shift register sequence
+            ledNumber3 (int): Position of LED in shift register sequence
+            ledNumber4 (int): Position of LED in shift register sequence
+        Returns:
+            Does not return anything
+    """
     current = diodeStateDict["diodes"]
     current = update_bit(current, ledNumber1, ON)
     current = update_bit(current, ledNumber2, OFF)
@@ -245,6 +267,16 @@ def tl_on_off_on_off(ledNumber1, ledNumber2, ledNumber3, ledNumber4):
     diodeStateDict["diodes"] = current
 
 def tl_off_on_off_on(ledNumber1, ledNumber2, ledNumber3, ledNumber4):
+    """
+    Used to turn four LEDs off/on/off/on in order
+        Parameters:
+            ledNumber1 (int): Position of LED in shift register sequence
+            ledNumber2 (int): Position of LED in shift register sequence
+            ledNumber3 (int): Position of LED in shift register sequence
+            ledNumber4 (int): Position of LED in shift register sequence
+        Returns:
+            Does not return anything
+    """
     current = diodeStateDict["diodes"]
     current = update_bit(current, ledNumber1, OFF)
     current = update_bit(current, ledNumber2, ON)
@@ -253,6 +285,16 @@ def tl_off_on_off_on(ledNumber1, ledNumber2, ledNumber3, ledNumber4):
     diodeStateDict["diodes"] = current
 
 def tl_off_off_off_off(ledNumber1, ledNumber2, ledNumber3, ledNumber4):
+    """
+    Used to turn four LEDs off/off/off/off in order
+        Parameters:
+            ledNumber1 (int): Position of LED in shift register sequence
+            ledNumber2 (int): Position of LED in shift register sequence
+            ledNumber3 (int): Position of LED in shift register sequence
+            ledNumber4 (int): Position of LED in shift register sequence
+        Returns:
+            Does not return anything
+    """
     current = diodeStateDict["diodes"]
     current = update_bit(current, ledNumber1, OFF)
     current = update_bit(current, ledNumber2, OFF)
@@ -261,57 +303,126 @@ def tl_off_off_off_off(ledNumber1, ledNumber2, ledNumber3, ledNumber4):
     diodeStateDict["diodes"] = current
 
 def tl_r_off_y_off_g_on(ledNumberRed, ledNumberYellow, ledNumberGreen):
+    """
+    Used to control three LEDs, where red is off, yellow is off and green is on
+    Not limited to these coloured LEDs; can be used for any three LEDs
+    Parameters:
+            ledNumberRed (int): Position of LED in shift register sequence
+            ledNumberYellow (int): Position of LED in shift register sequence
+            ledNumberGreen (int): Position of LED in shift register sequence
+        Returns:
+            Does not return anything
+    """
     current = diodeStateDict["diodes"]
     current = update_bit(current, ledNumberRed, OFF)
     current = update_bit(current, ledNumberYellow, OFF)
     current = update_bit(current, ledNumberGreen, ON)
     diodeStateDict["diodes"] = current
-    # write_to_shift_register(current)
 
 def tl_r_off_y_on_g_off(ledNumberRed, ledNumberYellow, ledNumberGreen):
+    """
+    Used to control three LEDs, where red is off, yellow is on and green is off
+    Not limited to these coloured LEDs; can be used for any three LEDs
+    Parameters:
+            ledNumberRed (int): Position of LED in shift register sequence
+            ledNumberYellow (int): Position of LED in shift register sequence
+            ledNumberGreen (int): Position of LED in shift register sequence
+        Returns:
+            Does not return anything
+    """
     current = diodeStateDict["diodes"]
     current = update_bit(current, ledNumberRed, OFF)
     current = update_bit(current, ledNumberYellow, ON)
     current = update_bit(current, ledNumberGreen, OFF)
     diodeStateDict["diodes"] = current
-    # write_to_shift_register(current)
 
 def tl_r_on_y_off_g_off(ledNumberRed, ledNumberYellow, ledNumberGreen):
+    """
+    Used to control three LEDs, where red is on, yellow is off and green is off
+    Not limited to these coloured LEDs; can be used for any three LEDs
+    Parameters:
+            ledNumberRed (int): Position of LED in shift register sequence
+            ledNumberYellow (int): Position of LED in shift register sequence
+            ledNumberGreen (int): Position of LED in shift register sequence
+        Returns:
+            Does not return anything
+    """
     current = diodeStateDict["diodes"]
     current = update_bit(current, ledNumberRed, ON)
     current = update_bit(current, ledNumberYellow, OFF)
     current = update_bit(current, ledNumberGreen, OFF)
     diodeStateDict["diodes"] = current
-    # write_to_shift_register(current)
 
 def tl_r_off_g_on(ledNumberRed, ledNumberGreen):
+    """
+    Used to control two LEDs, where red is off, and green is on
+    Not limited to these coloured LEDs; can be used for any two LEDs
+    Parameters:
+            ledNumberRed (int): Position of LED in shift register sequence
+            ledNumberGreen (int): Position of LED in shift register sequence
+        Returns:
+            Does not return anything
+    """
     current = diodeStateDict["diodes"]
     current = update_bit(current, ledNumberRed, OFF)
     current = update_bit(current, ledNumberGreen, ON)
     diodeStateDict["diodes"] = current
-    # write_to_shift_register(current)
 
 def tl_r_on_g_off(ledNumberRed, ledNumberGreen):
+    """
+    Used to control two LEDs, where red is on, and green is off
+    Not limited to these coloured LEDs; can be used for any two LEDs
+    Parameters:
+            ledNumberRed (int): Position of LED in shift register sequence
+            ledNumberGreen (int): Position of LED in shift register sequence
+        Returns:
+            Does not return anything
+    """
     current = diodeStateDict["diodes"]
     current = update_bit(current, ledNumberRed, ON)
     current = update_bit(current, ledNumberGreen, OFF)
     diodeStateDict["diodes"] = current
-    # write_to_shift_register(current)
 
 def tl_r_off_g_off(ledNumberRed, ledNumberGreen):
+    """
+    Used to control two LEDs, where red is off, and green is off
+    Not limited to these coloured LEDs; can be used for any two LEDs
+    Parameters:
+            ledNumberRed (int): Position of LED in shift register sequence
+            ledNumberGreen (int): Position of LED in shift register sequence
+        Returns:
+            Does not return anything
+    """
     current = diodeStateDict["diodes"]
     current = update_bit(current, ledNumberRed, OFF)
     current = update_bit(current, ledNumberGreen, OFF)
     diodeStateDict["diodes"] = current
 
 def tl_r_on_g_on(ledNumberRed, ledNumberGreen):
+    """
+    Used to control two LEDs, where red is on, and green is on
+    Not limited to these coloured LEDs; can be used for any two LEDs
+    Parameters:
+            ledNumberRed (int): Position of LED in shift register sequence
+            ledNumberGreen (int): Position of LED in shift register sequence
+        Returns:
+            Does not return anything
+    """
     current = diodeStateDict["diodes"]
     current = update_bit(current, ledNumberRed, ON)
     current = update_bit(current, ledNumberGreen, ON)
     diodeStateDict["diodes"] = current
 
 def update_traffic(sequence, action, action_default):
-
+    """
+    Controls timings for traffic sequences, tracks times independently in the background
+    Parameters:
+            sequence (dictionary): Dictionary containing, state, start time and durations for each state
+            action (function): first function to execute after first duration has passed
+            action_default (function): final function to execute after all durations have passed
+        Returns:
+            Does not return anything
+    """
     currentTime = time.time()
     elapsed = currentTime - sequence["startTime"]
 
@@ -327,6 +438,14 @@ def update_traffic(sequence, action, action_default):
             action_default()
 
 def start_sequence(sequence, action):
+    """
+    Control function; acts as a starter function for traffic sequences
+    Parameters:
+            sequence (dictionary): Dictionary containing, state, start time and durations for each state
+            action (function): first function to execute immediately after starting sequence
+        Returns:
+            Does not return anything
+    """
     if sequence["state"] == 0:  # prevents multiple timers from starting
         sequence["state"] = 1
         sequence["startTime"] = time.time()
@@ -365,7 +484,15 @@ def print_alert(heightTime, ground):
     )
 
 def apply_moving_average(raw_reading, history_list, window_size):
-
+    """
+    Takes values of ultrasonic sensor and averages it to create a moving average
+        Parameters:
+            raw_reading (float): Values read by the ultrasonic sensor
+            history_list  (list): A list of old and current ultrasonic sensor distance readings
+            window_size (integer): the number of ultrasonic readings to average out
+        Returns:
+            Returns a tuple of averaged out distances and timestamp of calculation
+    """
     if (raw_reading or raw_reading[0]) == None or raw_reading[0] == 0:
         return raw_reading 
         
@@ -380,6 +507,58 @@ def apply_moving_average(raw_reading, history_list, window_size):
     avg_distance = sum(history_list) / len(history_list)
     
     return [avg_distance, timestamp]
+
+def manage_global_lockdown():
+    """
+    Used to freeze subsystems 1, 2 and 3
+        Parameters:
+            No parameters
+        Returns:
+            Returns True if lockdown is active, False otherwise.
+    """
+    sensors = lockdownController["sensors"]
+    currentTime = time.time()
+
+    if (sensors["us3"] or sensors["us4"]) and not lockdownController["isActive"]:
+        lockdownController["isActive"] = True
+        lockdownController["us5HasSeenVehicle"] = False
+        
+        tl4tl5CycleController["state"] = 10 
+        tl1Controller["state"] = 10
+        tl2Controller["state"] = 10
+
+    if lockdownController["isActive"]:
+        tl_r_on_y_off_g_off(TL4R, TL4Y, TL4G)
+        tl_r_on_y_off_g_off(TL5R, TL5Y, TL5G)
+        
+        tl_r_on_y_off_g_off(TL1R, TL1Y, TL1G)
+        tl_r_on_y_off_g_off(TL2R, TL2Y, TL2G)
+        tl_r_on_y_off_g_off(TL6R, TL6Y, TL6G) 
+
+        if sensors["us5"] == True:
+            lockdownController["us5HasSeenVehicle"] = True
+
+        all_sensors_clear = not any(sensors.values())
+
+        if lockdownController["us5HasSeenVehicle"] and all_sensors_clear:
+            lockdownController["isActive"] = False
+            
+            tl4tl5CycleController["state"] = 5 if ds2EnvironmentState["isNight"] else 1
+            tl4tl5CycleController["startTime"] = currentTime
+
+            tl_r_off_y_off_g_on(TL4R, TL4Y, TL4G)
+            tl_r_on_y_off_g_off(TL5R, TL5Y, TL5G)
+            
+            tl1Controller["state"] = 0
+            tl2Controller["state"] = 0
+            tl_r_off_y_off_g_on(TL1R, TL1Y, TL1G)
+            tl_r_off_y_off_g_on(TL2R, TL2Y, TL2G)
+
+            tl6Controller["state"] = 0
+            
+        return True # Lockdown active
+
+    return False # Normal operation
 
 #---delete when done----------------
 mock_input_queue = queue.Queue()
@@ -425,6 +604,12 @@ def subsystem_1(us1History, us2History):
 
     #us1Value = apply_moving_average(us1ValueRaw, us1History, 5)
     us2Value = apply_moving_average(us2ValueRaw, us2History, 5)
+
+    lockdownController["sensors"]["us1"] = check_overheight(us1Value, limit, GROUND)
+    lockdownController["sensors"]["us2"] = check_overheight(us2Value, limit, GROUND)
+
+    if lockdownController["isActive"]:
+        return 
 
     currentTime = time.time()
     elapsed = currentTime - wl1Controller["startTime"] 
@@ -497,6 +682,9 @@ def subsystem_2():
     buttonData, timeStampPb12 = board.digital_read(PB_1_2_PIN)  # default 1 (up)
     ldr_data2, timeStampDs2 = board.analog_read(DS_PIN_2)
     # print(ldr_data2)
+
+    if lockdownController["isActive"]:
+        return # Skip normal logic
 
 #--4.I1 override sequence when US3 or US4 detects overheight
 
@@ -690,8 +878,7 @@ def subsystem_2():
 
     # ------------------------Cycling sequence------------------------
     
-    if tl4tl5CycleController["state"] == 9:
-        # print("this is happening")
+    if tl4tl5CycleController["state"] in (9,10):
         return
 
     
@@ -736,6 +923,12 @@ def subsystem_3():
     us5Value = board.sonar_read(TRIG_PIN_US_5)  #[distance, timestamp]
     ldr_data1, timeStampDs2 = board.analog_read(DS_PIN_1)
     currentTime = time.time()
+
+    lockdownController["sensors"]["us5"] = check_overheight(us5Value, limit, GROUND) 
+    sharedUs5State["detected"] = lockdownController["sensors"]["us5"] 
+
+    if lockdownController["isActive"]:
+        return 
 
     sharedUs5State["detected"] = check_overheight(us5Value, limit, GROUND) #For 2.I1
 
@@ -799,6 +992,9 @@ def subsystem_4():
     elapsed = currentTime - wl2Controller["startTime"] 
 
     ValueCheck = abs(us3Value[0] - us4Value[0]) <= ERROR_MARGIN
+
+    lockdownController["sensors"]["us3"] = check_overheight(us3Value, limit, GROUND)
+    lockdownController["sensors"]["us4"] = check_overheight(us4Value, limit, GROUND)
 
     if check_overheight(us3Value, limit, GROUND):
         sharedUs34State["detected3"] = True
@@ -879,6 +1075,8 @@ try:
         subsystem_2()
         subsystem_3()
         subsystem_4()
+
+        manage_global_lockdown()
 
         if diodeStateDict["diodes"] != previous_diodes: #Lowers the amount of bits goings to the shift register, decreases component load
             write_to_shift_register(diodeStateDict["diodes"])
