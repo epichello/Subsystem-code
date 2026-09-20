@@ -111,6 +111,23 @@ pedestrianInterrupt = {
     "freezeState": 4, #Used to check the state after the 2s wait later
 }
 
+us5InterruptController = {
+    "state": 0,
+    "startTime": 0.0,
+    "durations": {1: 3.0, 2: 2.0, 3:0.1},
+    "activeYellow": 4
+}
+
+sharedUs5State = {
+    "detected": False
+}
+
+sharedUs34State ={
+    "detected3": False,
+    "detected4": False,
+    "active": False,
+}
+
 us45Controller = {
     "us4Detect": False,
 }
@@ -460,15 +477,134 @@ def subsystem_1(us1History, us2History):
             else:
                 tl_r_on_g_off(WL1L, WL1R)
 
-        else:
-            tl_r_off_g_off(WL1L, WL1R)
-            wl1Controller["state"] = 0
+    else:
+        tl_r_off_g_off(WL1L, WL1R)
+        wl1Controller["state"] = 0
+
+# us5InterruptController = {
+#     "state": 0,
+#     "startTime": 0.0,
+#     "durations": {1: 3.0, 3: 2.0}, # State 1: 3s yellow, State 3: 2s flashing red
+#     "freezeState": 4
+# }
+
+# sharedUs5State = {
+#     "detected": False
+# }
 
 def subsystem_2():
     currentTime = time.time()
     buttonData, timeStampPb12 = board.digital_read(PB_1_2_PIN)  # default 1 (up)
     ldr_data2, timeStampDs2 = board.analog_read(DS_PIN_2)
     # print(ldr_data2)
+
+#--4.I1 override sequence when US3 or US4 detects overheight
+
+    if sharedUs34State["detected3"] == True or sharedUs34State["detected4"] == True:
+        tl_r_on_y_off_g_off(TL4R, TL4Y, TL4G)
+        tl_r_on_y_off_g_off(TL5R, TL5Y, TL5G)
+        sharedUs34State["active"] = True
+        return
+    elif sharedUs34State["active"] == True:
+        sharedUs34State["active"] = False
+        currentState = tl4tl5CycleController["state"]
+
+        if currentState in (1, 5): 
+            tl_r_off_y_off_g_on(TL4R, TL4Y, TL4G)
+            tl_r_on_y_off_g_off(TL5R, TL5Y, TL5G)
+        elif currentState in (2, 6):
+            tl_r_off_y_on_g_off(TL4R, TL4Y, TL4G)
+            tl_r_on_y_off_g_off(TL5R, TL5Y, TL5G)
+        elif currentState in (3, 7):
+            tl_r_on_y_off_g_off(TL4R, TL4Y, TL4G)
+            tl_r_off_y_off_g_on(TL5R, TL5Y, TL5G)
+        elif currentState in (4, 8):
+            tl_r_on_y_off_g_off(TL4R, TL4Y, TL4G)
+            tl_r_off_y_on_g_off(TL5R, TL5Y, TL5G)
+
+#--2.I1 override sequence when US5 detects overheight  
+
+    if sharedUs5State["detected"] == True and us5InterruptController["state"] == 0:  
+        us5InterruptController["startTime"] = currentTime
+        us5InterruptController["state"] = 1
+        pedestrianInterrupt["state"] = 0
+
+        currentState = tl4tl5CycleController["state"]
+
+        tl4tl5CycleController["state"] = 10 #pause state
+
+        if currentState in (1, 2, 5, 6): # TL4 was Green/Yellow
+            us5InterruptController["activeYellow"] = 4
+        else: # TL5 was Green/Yellow
+            us5InterruptController["activeYellow"] = 5
+
+        
+    if us5InterruptController["state"] != 0:
+        us5InterruptionElapsed = currentTime - us5InterruptController["startTime"]
+        stateUs5 = us5InterruptController["state"]
+
+        if stateUs5 == 1:
+            if us5InterruptController.get("activeYellow") == 4:
+                tl_r_off_y_on_g_off(TL4R, TL4Y, TL4G)
+                tl_r_on_y_off_g_off(TL5R, TL5Y, TL5G)
+            else:
+                tl_r_on_y_off_g_off(TL4R, TL4Y, TL4G)
+                tl_r_off_y_on_g_off(TL5R, TL5Y, TL5G)
+
+            tl_r_on_g_off(PL1R, PL1G)
+            tl_r_on_g_off(PL2R, PL2G)
+
+            if us5InterruptionElapsed >= 3.0: # 3s yellow phase[cite: 4]
+                us5InterruptController["state"] = 2
+                us5InterruptController["clearTime"] = currentTime
+
+        elif stateUs5 == 2: # Solid red traffic, green pedestrians
+            tl_r_on_y_off_g_off(TL4R, TL4Y, TL4G)
+            tl_r_on_y_off_g_off(TL5R, TL5Y, TL5G)
+            tl_r_off_g_on(PL1R, PL1G)
+            tl_r_off_g_on(PL2R, PL2G)
+
+            if sharedUs5State["detected"] == True:
+                # Vehicle is still detected, keep resetting the exit timer
+                us5InterruptController["clearTime"] = currentTime
+            else:
+                # Vehicle clears. Use a 1-second debounce to prevent glitching on false readings.
+                if (currentTime - us5InterruptController.get("clearTime", currentTime)) > 1.0:
+                    us5InterruptController["state"] = 3
+                    us5InterruptController["startTime"] = currentTime
+                    
+                    # Force pedestrians back to red instantly for a seamless transition
+                    tl_r_on_g_off(PL1R, PL1G)
+                    tl_r_on_g_off(PL2R, PL2G)
+
+        elif stateUs5 == 3:
+            tl_r_on_y_off_g_off(TL4R, TL4Y, TL4G)
+            tl_r_on_y_off_g_off(TL5R, TL5Y, TL5G)
+
+            if us5InterruptionElapsed >= 2.0:
+                tl_r_on_g_off(PL1R, PL1G)
+                tl_r_on_g_off(PL2R, PL2G)
+
+                tl_r_off_y_off_g_on(TL4R, TL4Y, TL4G)  # TL4 Green
+                tl_r_on_y_off_g_off(TL5R, TL5Y, TL5G)  # TL5 Red
+
+                if ds2EnvironmentState["isNight"]:
+                    tl4tl5CycleController["state"] = 5
+                else:
+                    tl4tl5CycleController["state"] = 1
+                tl4tl5CycleController["startTime"] = currentTime
+                
+                us5InterruptController["state"] = 0
+            else:
+
+                if int(us5InterruptionElapsed * 5) % 2 == 0:
+                    tl_r_on_g_off(PL1R, PL1G)
+                    tl_r_on_g_off(PL2R, PL2G)
+                else:
+                    tl_r_off_g_off(PL1R, PL1G)
+                    tl_r_off_g_off(PL2R, PL2G)
+        return
+
 
     if ldr_data2 < NIGHT_THRESHOLD:
         ds2EnvironmentState["isNight"] = True
@@ -536,7 +672,6 @@ def subsystem_2():
                     tl_r_on_g_off(PL2R, PL2G)
                     
                     pedestrianInterrupt["state"] = 0
-
                     
                     tl4tl5CycleController["state"] = 0
 
@@ -602,6 +737,8 @@ def subsystem_3():
     ldr_data1, timeStampDs2 = board.analog_read(DS_PIN_1)
     currentTime = time.time()
 
+    sharedUs5State["detected"] = check_overheight(us5Value, limit, GROUND) #For 2.I1
+
     if ldr_data1 < NIGHT_THRESHOLD:
         ds1EnvironmentState["isNight"] = True
     elif ldr_data1 > DAY_THRESHOLD:
@@ -663,6 +800,15 @@ def subsystem_4():
 
     ValueCheck = abs(us3Value[0] - us4Value[0]) <= ERROR_MARGIN
 
+    if check_overheight(us3Value, limit, GROUND):
+        sharedUs34State["detected3"] = True
+    else:
+        sharedUs34State["detected3"] = False
+    if check_overheight(us4Value,limit, GROUND):
+        sharedUs34State["detected4"] = True 
+    else:
+        sharedUs34State["detected4"] = False
+
     if check_overheight(us3Value, limit, GROUND) == True and check_overheight(us4Value, limit, GROUND) == True and ValueCheck == True:
         tl_r_on_g_off(TL3R, TL3G)
 
@@ -723,10 +869,11 @@ print(f"The limit was set to {limit}m")
 write_to_shift_register(diodeStateDict["diodes"])
 previous_diodes = diodeStateDict["diodes"]
 
+us1_moving_average_list = []
+us2_moving_average_list = []
+
 try:
     while True:
-        us1_moving_average_list = []
-        us2_moving_average_list = []
 
         subsystem_1(us1_moving_average_list, us2_moving_average_list)
         subsystem_2()
