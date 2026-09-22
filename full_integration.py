@@ -3,7 +3,7 @@ import time
 import math
 import random
 
-#----Temp stuff (delete when done)
+#----Temp stuff (delete when done), this is just to input values manually for US1 since I don't have it rn
 import queue
 import threading
 #----
@@ -42,26 +42,27 @@ GROUND = 20  # ground is 10cm away from the supersonic sensors
 UP = 1 #button states
 DOWN = 0
 
-ON = 1  
+ON = 1 
 OFF = 0
 
-FILTER_WINDOW = 5  #avg last 5 readings 
+FILTER_WINDOW = 5  #avg last 5 readings for ultrasonic sensor 
 
 NIGHT_THRESHOLD = 200   #Daylight sensor values
 
-DAY_THRESHOLD = 300 #100 deadzone to prevent random fluctuations
+DAY_THRESHOLD = 300 #100 deadzone to prevent random fluctuations in daylight sensor state
 
-ERROR_MARGIN = 5 #5cm
+ERROR_MARGIN = 5 #5cm error margin for US3 and US4 detection 
 
 # ------------------------Controllers------------------------
 
 diodeStateDict = {"diodes": 0b0000000100100001001101000100100}
-
+#This is what the shift register will be changing to change LED states globally
 
 sensor_history = {
     "US1": [],
     "US2": []
 }
+#Used to calculate a point average for distances deetected by the ultrasonic sensor
 
 tl1Controller = {
     "state": 0,
@@ -82,6 +83,7 @@ tl4tl5CycleController = {
     "startTime": 0.0,
     "durations": {1: 20.0, 2: 3.0, 3: 10.0, 4: 3.0, 5: 30.0, 6: 3.0, 7: 5.0, 8: 3.0, 9: 50},    #Stage 9, is for interruption cycle
 }  #Day cyle: stage 1: 20s, stage 2: 3s, stage 3: 10s, stage 4: 3s. Night cycle: stage 5: 30, stage 6: 3, stage 7: 5, stage 8: 3 
+   #Stages are used to track how long each LED state will stay on for
 
 tl6Controller = {
     "state": 0,
@@ -155,9 +157,10 @@ lockdownController = {
         "us5": False
     }
 }
+#Used to stop the system in accordance with 4.I3 integration
 
 # ---------------------Registering pins----------------------------
-board.set_pin_mode_digital_output(CLOCK_PIN)  # Shift register
+board.set_pin_mode_digital_output(CLOCK_PIN)  # Shift register stuff
 board.set_pin_mode_digital_output(LATCH_PIN)
 board.set_pin_mode_digital_output(DATA_PIN)
 
@@ -221,13 +224,10 @@ def update_bit(diodeState, ledNumber, state):
         diodeState (int): sequence (32-bit) for shift register
     """
     if state == 1:
-        return diodeState | (
-            1 << ledNumber
-        )  # RHS creates temp 32-bit number; compares RHS bit with LHS bit using OR operator
+        return diodeState | (1 << ledNumber)
+    # This works by having RHS create a temp 32-bit number then it compares RHS bit with LHS bit using OR operator, basically masking
     else:
-        return diodeState & ~(
-            1 << ledNumber
-        )  # RHS creates temp 32-bit number; compares RHS bit with LHS bit using NAND operator
+        return diodeState & ~(1 << ledNumber) #NAND operator  
 
 def write_to_shift_register(value):
     """
@@ -237,9 +237,7 @@ def write_to_shift_register(value):
         Returns:
             Does not return anything
     """
-    board.digital_write(
-        LATCH_PIN, 0
-    )  # readies shift register to listen (initial state low for all outputs)
+    board.digital_write(LATCH_PIN, 0)  # readies shift register to listen (initial state low for all outputs)
     for i in range(31, -1, -1):
         board.digital_write(DATA_PIN, (value >> i) & 1)  # shifts value and ensures only 0s and 1s are pushed through
         board.digital_write(CLOCK_PIN, 1)
@@ -523,27 +521,30 @@ def manage_global_lockdown():
         lockdownController["isActive"] = True
         lockdownController["us5HasSeenVehicle"] = False
         
-        tl4tl5CycleController["state"] = 10 
+        tl4tl5CycleController["state"] = 10     #freeze states for respective traffic lights
         tl1Controller["state"] = 10
         tl2Controller["state"] = 10
 
     if lockdownController["isActive"]:
-        tl_r_on_y_off_g_off(TL4R, TL4Y, TL4G)
+        tl_r_on_y_off_g_off(TL4R, TL4Y, TL4G)   #Traffic colour states
         tl_r_on_y_off_g_off(TL5R, TL5Y, TL5G)
         
         tl_r_on_y_off_g_off(TL1R, TL1Y, TL1G)
         tl_r_on_y_off_g_off(TL2R, TL2Y, TL2G)
         tl_r_on_y_off_g_off(TL6R, TL6Y, TL6G) 
 
-        if sensors["us5"] == True:
+        if sensors["us5"] == True:  #Used to check if vehicle has passed
             lockdownController["us5HasSeenVehicle"] = True
 
-        all_sensors_clear = not any(sensors.values())
+        all_sensors_clear = not any(sensors.values())   #check all is false
 
-        if lockdownController["us5HasSeenVehicle"] and all_sensors_clear:
+        if lockdownController["us5HasSeenVehicle"] and all_sensors_clear:   #Return to sequences and check day/night states
             lockdownController["isActive"] = False
             
-            tl4tl5CycleController["state"] = 5 if ds2EnvironmentState["isNight"] else 1
+            if ds2EnvironmentState["isNight"] == True:
+                tl4tl5CycleController["state"] = 5 
+            else:
+                tl4tl5CycleController["state"] = 1
             tl4tl5CycleController["startTime"] = currentTime
 
             tl_r_off_y_off_g_on(TL4R, TL4Y, TL4G)
@@ -560,7 +561,7 @@ def manage_global_lockdown():
 
     return False # Normal operation
 
-#---delete when done----------------
+#---delete when done---------------- Used to manually input values for US1 cause i dont have it rn
 mock_input_queue = queue.Queue()
 
 def keyboard_listener():
@@ -582,11 +583,27 @@ input_thread.start()
 
 # Default fallback value: distance = 15 cm (below threshold), current timestamp
 last_us1_value = [15.0, time.time()]
-#----------------------------------
+#------------------------------------------------------
 
 def subsystem_1(us1History, us2History):
+    """
+    Implemented features: R1, R2, R3, R4, G1, G4. Features that may overide these features - 4.I3
+    This system utilises 2 ultrasonic sensors (US1 & US2), two traffic lights (TL1/TL2) and one warning light (WL1) 
+    If overheight is detected by US1 then US2, traffic sequence is independently ran for TL1 and TL2 respectively
+    If overheight is detected by US2 first, TL1 and TL2 undergo the same traffic light sequence, during any traffic light sequence WL1 flashes
+    Ultrasonic sensor data is filtered by a moving point average (last 5)
 
-    #--------delete when done--------------
+    System may freeze if detected overheight by US3/US4 - until normal state is returned by US1/US2/US3/US4/US5 no longer detecting overheight 
+    And US5 detects a vehicle leaving the system
+
+        Parameters:
+            us1History (tuple): Data containing filtered ultrasonics sensor data for ultrasonic sensor 1 
+            us2History (tuple): Data containing filtered ultrasonics sensor data for ultrasonic sensor 2
+            window_size (integer): the number of ultrasonic readings to average out
+        Returns:
+            No returns
+    """
+    #--------delete when done-------------- This is just used to input US1 data manually since i dont have it rn
     global last_us1_value
 
     try:
@@ -608,13 +625,13 @@ def subsystem_1(us1History, us2History):
     lockdownController["sensors"]["us1"] = check_overheight(us1Value, limit, GROUND)
     lockdownController["sensors"]["us2"] = check_overheight(us2Value, limit, GROUND)
 
-    if lockdownController["isActive"]:
+    if lockdownController["isActive"]:  #This used to check for system shutdown (4.I3)
         return 
 
     currentTime = time.time()
     elapsed = currentTime - wl1Controller["startTime"] 
 
-    if check_overheight(us1Value, limit, GROUND) == True:
+    if check_overheight(us1Value, limit, GROUND) == True:   #Checks for US1 overheight detection and starts traffic light sequence
         if tl1Controller["state"] == 0:
             print_alert(us1Value, GROUND)
         start_sequence(tl1Controller, lambda: tl_r_off_y_on_g_off(TL1R, TL1Y, TL1G))
@@ -626,7 +643,6 @@ def subsystem_1(us1History, us2History):
     )
 
     if check_overheight(us2Value, limit, GROUND) == True:
-
         start_sequence(tl2Controller, lambda: tl_r_off_y_on_g_off(TL2R, TL2Y, TL2G))
     update_traffic(
         tl2Controller,
@@ -666,25 +682,34 @@ def subsystem_1(us1History, us2History):
         tl_r_off_g_off(WL1L, WL1R)
         wl1Controller["state"] = 0
 
-# us5InterruptController = {
-#     "state": 0,
-#     "startTime": 0.0,
-#     "durations": {1: 3.0, 3: 2.0}, # State 1: 3s yellow, State 3: 2s flashing red
-#     "freezeState": 4
-# }
-
-# sharedUs5State = {
-#     "detected": False
-# }
-
 def subsystem_2():
+    """
+    Implemented features: R1, R2, R3, G1, G3, I3. Features that may overide these features - 3.I1, 4.I2, 4.I3
+    This system utilises two push buttons (PB1/PB2), two traffic lights (TL4/TL5), two pedestrian lights (PL1/PL2) and a daylight sensor (DS2) 
+    TL4 and TL5 cycle through states (20/10s) or if it is night time as detected by daylight sensor the TL4 and TL5 cycle changes (30/5s)
+    If PB1/PB2 is pressed then the TL4/TL5 cycle will stop, and the current green/yellow will go yellow then red, PL1/PL2 will turn green (3s)
+    then turn a flashing red (2s) before allowing TL4/TL5 to return to cycling
+    The button sequence cannot be started more than once within 30s
+
+    Normal behaviour can be overriden if US5 (subsystem three) detects overheight, turning TL4/TL5 red (if green, then to yellow to red, if red stay red)
+    PL1/PL2 turns green, until US5 no longer detects overheight, then PL1/PL2 flashes red (2s), TL4 turns green and normal cycling continues 
+    
+    If US3/US4 detects overheight then TL4/TL5 turns red immediately (this will be in a freeze state because of 4.I3)
+
+    System may freeze if detected overheight by US3/US4 - until normal state is returned by US1/US2/US3/US4/US5 no longer detecting overheight 
+    And US5 detects a vehicle leaving the system
+
+        Parameters:
+            No parameters
+        Returns:
+            No returns
+    """
     currentTime = time.time()
-    buttonData, timeStampPb12 = board.digital_read(PB_1_2_PIN)  # default 1 (up)
+    buttonData, timeStampPb12 = board.digital_read(PB_1_2_PIN)  #reads default 1 (up)
     ldr_data2, timeStampDs2 = board.analog_read(DS_PIN_2)
-    # print(ldr_data2)
 
     if lockdownController["isActive"]:
-        return # Skip normal logic
+        return # Skip normal logic, reduces cpu usage and stops other checks from happening and interrupting the freeze
 
 #--4.I1 override sequence when US3 or US4 detects overheight
 
@@ -742,7 +767,7 @@ def subsystem_2():
             tl_r_on_g_off(PL1R, PL1G)
             tl_r_on_g_off(PL2R, PL2G)
 
-            if us5InterruptionElapsed >= 3.0: # 3s yellow phase[cite: 4]
+            if us5InterruptionElapsed >= 3.0: 
                 us5InterruptController["state"] = 2
                 us5InterruptController["clearTime"] = currentTime
 
@@ -753,15 +778,12 @@ def subsystem_2():
             tl_r_off_g_on(PL2R, PL2G)
 
             if sharedUs5State["detected"] == True:
-                # Vehicle is still detected, keep resetting the exit timer
-                us5InterruptController["clearTime"] = currentTime
+                us5InterruptController["clearTime"] = currentTime    # Vehicle is still detected, keep resetting the exit timer
             else:
-                # Vehicle clears. Use a 1-second debounce to prevent glitching on false readings.
                 if (currentTime - us5InterruptController.get("clearTime", currentTime)) > 1.0:
                     us5InterruptController["state"] = 3
                     us5InterruptController["startTime"] = currentTime
                     
-                    # Force pedestrians back to red instantly for a seamless transition
                     tl_r_on_g_off(PL1R, PL1G)
                     tl_r_on_g_off(PL2R, PL2G)
 
@@ -792,7 +814,6 @@ def subsystem_2():
                     tl_r_off_g_off(PL1R, PL1G)
                     tl_r_off_g_off(PL2R, PL2G)
         return
-
 
     if ldr_data2 < NIGHT_THRESHOLD:
         ds2EnvironmentState["isNight"] = True
@@ -874,13 +895,10 @@ def subsystem_2():
         if (elapsedButton >= buttonController["durations"][stateButton]) and buttonController["state"] == DOWN:  #button has been pressed & only allows when 30s has passed
             buttonController["state"] = UP
                 
-
-
     # ------------------------Cycling sequence------------------------
     
     if tl4tl5CycleController["state"] in (9,10):
         return
-
     
     if tl4tl5CycleController["state"] == 0:
         if ds2EnvironmentState["isNight"] == True:
@@ -920,6 +938,22 @@ def subsystem_2():
             tl_r_off_y_on_g_off(TL5R, TL5Y, TL5G)
 
 def subsystem_3():
+    """
+    Implemented features: R1, R2, G3, G4. Features that may overide these features - 4.I3
+    This system utilises an ultrasonic sensor (US5), traffic lights (TL6), and two flood lights (FL1/FL2) and a daylight sensor (DS1)
+    If overheight is detected by US5 then TL6 undergoes a traffic light sequence (5s green, 3s yellow then red), if US5 continues to detected overheight then TL6 stays green
+    then undergoes traffic light sequence
+    If overheight is detected by US5 during the night, then FL1 and FL2 will turn on as long as US5 detects overheight. Traffic light sequence will also be:
+    10s green, 3s yellow then red
+
+    System may freeze if detected overheight by US3/US4 - until normal state is returned by US1/US2/US3/US4/US5 no longer detecting overheight 
+    And US5 detects a vehicle leaving the system
+
+        Parameters:
+            No parameters
+        Returns:
+            No returns
+    """
     us5Value = board.sonar_read(TRIG_PIN_US_5)  #[distance, timestamp]
     ldr_data1, timeStampDs2 = board.analog_read(DS_PIN_1)
     currentTime = time.time()
@@ -932,14 +966,14 @@ def subsystem_3():
 
     sharedUs5State["detected"] = check_overheight(us5Value, limit, GROUND) #For 2.I1
 
-    if ldr_data1 < NIGHT_THRESHOLD:
+    if ldr_data1 < NIGHT_THRESHOLD: #Check day night stuff
         ds1EnvironmentState["isNight"] = True
     elif ldr_data1 > DAY_THRESHOLD:
         ds1EnvironmentState["isNight"] = False
 
     if check_overheight(us5Value, limit, GROUND) == True:
         if ds1EnvironmentState["isNight"] == True:
-            tl6Controller["state"] = 4
+            tl6Controller["state"] = 4  #Starts at state 4 which has different timing if night
         else:    
             tl6Controller["state"] = 1
             
@@ -961,7 +995,7 @@ def subsystem_3():
     if tl6Controller["state"] not in (0,6):
         if elapsed >= tl6Controller["durations"][state]:
             if ds1EnvironmentState["isNight"] == True:
-                nextState = (state % 3) + 4
+                nextState = (state % 3) + 4 #Adds 4 since night cycle stage starts at 5
             else:
                 nextState = (state % 3) + 1
 
@@ -983,10 +1017,19 @@ def subsystem_3():
                 tl6Controller["state"] = 3  #freeze state
 
 def subsystem_4():
-    #2hz flashing - 1s per XOXO/OXOX
+    """
+    Implemented features: R1, R2, R3, G1, I2, I3
+    This system utilises two ultrasonic sensors (US3/US4), warning lights (WL2) and a traffic light (TL3) 
+    Asks the user for overheight, and defaults to 4cm if no value is inputted
+    TL3, turns red immediately upon overheight detection by US3 after value is confirmed by US4. WL2 also flashes XOXO and OXOX
+    
+        Parameters:
+            No parameters
+        Returns:
+            No returns
+    """
     us3Value = board.sonar_read(TRIG_PIN_US_3)  #[distance, timestamp]
     us4Value = board.sonar_read(TRIG_PIN_US_4)  #[distance, timestamp]
-    #first flash off on off on
 
     currentTime = time.time()
     elapsed = currentTime - wl2Controller["startTime"] 
@@ -1000,6 +1043,7 @@ def subsystem_4():
         sharedUs34State["detected3"] = True
     else:
         sharedUs34State["detected3"] = False
+        
     if check_overheight(us4Value,limit, GROUND):
         sharedUs34State["detected4"] = True 
     else:
@@ -1025,19 +1069,7 @@ def subsystem_4():
         wl2Controller["state"] = 0
      
 
-    
-            
-
-
-
-
-
-
-
-            
-
-
-# ----------------------User Input---------------------
+# ----------------------User Input------------------------
 
 limit = 4.0  # Default value
 
