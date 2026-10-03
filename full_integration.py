@@ -3,11 +3,6 @@ import time
 import math
 import random
 
-#----Temp stuff (delete when done), this is just to input values manually for US1 since I don't have it rn
-import queue
-import threading
-#----
-
 board = pymata4.Pymata4()  # board initialisation
 
 # ---------------------Full-pin-layout---------------------
@@ -37,7 +32,7 @@ DS_PIN_2 = 4  # A4
 
 # ------------------------Constants------------------------
 
-GROUND = 20  # ground is 10cm away from the supersonic sensors
+GROUND = 10  # ground is 10cm away from the supersonic sensors
 
 UP = 1 #button states
 DOWN = 0
@@ -561,30 +556,6 @@ def manage_global_lockdown():
 
     return False # Normal operation
 
-#---delete when done---------------- Used to manually input values for US1 cause i dont have it rn
-mock_input_queue = queue.Queue()
-
-def keyboard_listener():
-    """Background thread to read terminal input without blocking the main loop."""
-    while True:
-        try:
-            line = input()
-            val = float(line.strip())
-            mock_input_queue.put(val)
-            print(f"[MANUAL OVERRIDE] Set US1 distance to: {val} cm")
-        except ValueError:
-            pass
-        except EOFError:
-            break
-
-# Start the listener thread as a daemon (closes automatically when script stops)
-input_thread = threading.Thread(target=keyboard_listener, daemon=True)
-input_thread.start()
-
-# Default fallback value: distance = 15 cm (below threshold), current timestamp
-last_us1_value = [15.0, time.time()]
-#------------------------------------------------------
-
 def subsystem_1(us1History, us2History):
     """
     Implemented features: R1, R2, R3, R4, G1, G4. Features that may overide these features - 4.I3
@@ -603,23 +574,10 @@ def subsystem_1(us1History, us2History):
         Returns:
             No returns
     """
-    #--------delete when done-------------- This is just used to input US1 data manually since i dont have it rn
-    global last_us1_value
-
-    try:
-        new_dist = mock_input_queue.get_nowait()
-        last_us1_value = [new_dist, time.time()]
-    except queue.Empty:
-        # Keep previous distance, update timestamp to now
-        last_us1_value[1] = time.time()
-
-    us1Value = last_us1_value
-
-    #-------------------------------------------
-    #us1ValueRaw = board.sonar_read(TRIG_PIN_US_1)
+    us1ValueRaw = board.sonar_read(TRIG_PIN_US_1)
     us2ValueRaw = board.sonar_read(TRIG_PIN_US_2)
-
-    #us1Value = apply_moving_average(us1ValueRaw, us1History, 5)
+    print(us1ValueRaw[0])
+    us1Value = apply_moving_average(us1ValueRaw, us1History, 5)
     us2Value = apply_moving_average(us2ValueRaw, us2History, 5)
 
     lockdownController["sensors"]["us1"] = check_overheight(us1Value, limit, GROUND)
